@@ -364,6 +364,13 @@ RSpec.describe ForkFlow do
       expect(rules).to be > push
     end
 
+    # CI's comment gate reads a fork's first PR, so the rename commit has to pass it.
+    it "writes a .fork.yml header the comment gate accepts" do
+      run_fork(name: "my_app", preset: "none", yes: true)
+
+      expect(repo.join(".fork.yml").readlines.take_while { |line| line.start_with?("#") }.size).to be <= 2
+    end
+
     it "records provenance that round-trips through safe YAML" do
       run_fork(name: "my_app", preset: "none", yes: true)
 
@@ -437,6 +444,7 @@ RSpec.describe ForkFlow do
       run_fork(name: "my_app", origin: "git@github.com:me/my_app.git", yes: true)
 
       expect(capture_git("config", "--get", "remote.origin.gh-resolved")).to eq("base")
+      expect(capture_git("config", "--get", "remote.pushDefault")).to eq("origin")
     end
 
     it "makes an origin that was already there gh's default too" do
@@ -444,6 +452,7 @@ RSpec.describe ForkFlow do
       run_fork(name: "my_app", yes: true)
 
       expect(capture_git("config", "--get", "remote.origin.gh-resolved")).to eq("base")
+      expect(capture_git("config", "--get", "remote.pushDefault")).to eq("origin")
     end
 
     # Anchoring matters: an unanchored pattern matches "me/not_modelrails_base",

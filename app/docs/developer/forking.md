@@ -123,6 +123,7 @@ git branch --unset-upstream                   # or `git pull` would still pull t
 # Your new repository becomes origin
 git remote add origin git@github.com:YOU/myapp.git
 git config remote.origin.gh-resolved base     # gh otherwise acts on upstream: the template
+git config remote.pushDefault origin          # gh otherwise offers the template first for an unpushed branch
 git push -u origin main
 
 # Activate the fork-owned merge driver (bin/setup also does this for you,
