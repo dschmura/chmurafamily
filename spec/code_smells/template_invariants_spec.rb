@@ -1289,6 +1289,8 @@ RSpec.describe "Template invariants" do
   end
 
   describe "bin/fork's rename and CI's comment gate" do
+    before { load Rails.root.join("bin/fork").to_s unless defined?(ForkFlow) }
+
     # A rename touching a long comment block fails the fork's first PR on a line it didn't write.
     it "renames no token inside a comment block over two lines", :template_only do
       long_blocks = ForkFlow::SUBSTITUTIONS.flat_map do |path, substitutions|
@@ -1325,7 +1327,7 @@ RSpec.describe "Template invariants" do
 
   describe "bin/mail-setup can edit the shipped deploy.yml" do
     it "finds SMTP_ADDRESS under env.clear", :template_only do
-      load root.join("bin/mail-setup")
+      load root.join("bin/mail-setup") unless defined?(MailSetup)
 
       expect(MailSetup::DeployFile.editable?(File.read(root.join("config/deploy.yml")))).to be(true)
     end
