@@ -1220,9 +1220,7 @@ RSpec.describe "Template invariants" do
     # the template's own tree, so it goes inert on the same .fork.yml signal
     # the placeholder-hygiene group below switches on. Without this every
     # fork's first CI run failed here, whatever it pushed.
-    it "searches for tokens that are still present in each file" do
-      skip "fork — bin/fork already consumed these tokens" if root.join(".fork.yml").exist?
-
+    it "searches for tokens that are still present in each file", :template_only do
       stale = ForkFlow::SUBSTITUTIONS.flat_map do |path, substitutions|
         content = File.read(root.join(path))
         substitutions.reject { |from, _| content.include?(from) }.map { |from, _| "#{path}: #{from.inspect}" }
@@ -1244,9 +1242,7 @@ RSpec.describe "Template invariants" do
     # someone acts (#553). merge=ours means upstream fixes to fork-owned
     # locale files never arrive on sync, so the fork's own suite is the only
     # place this class of leftover can be caught.
-    it "ships no placeholder support address in fork-owned locale files" do
-      skip "template repo — placeholders are correct here" unless Rails.root.join(".fork.yml").exist?
-
+    it "ships no placeholder support address in fork-owned locale files", :fork_only do
       content = Rails.root.join("config/locales/en/pages.en.yml").read
       stale = content.scan(/[\w.+-]+@[\w.-]+\.example\b/) + content.scan(/[\w.+-]+@example\.com\b/)
       expect(stale).to be_empty,
@@ -1262,10 +1258,8 @@ RSpec.describe "Template invariants" do
     end
 
     # Directly after MAIL_FROM these lines would conflict with a fork's mail edits on sync.
-    it "keeps the commented sign-up lines above the outbound mail comment" do
+    it "keeps the commented sign-up lines above the outbound mail comment", :template_only do
       deploy = File.read(root.join("config/deploy.yml"))
-      skip "fork — a fork may have rewritten config/deploy.yml" if root.join(".fork.yml").exist?
-
       mail = deploy.index("# Outbound mail:")
       expect(deploy.index("# SIGNUP_MODE: open")).to be < mail
       expect(deploy.index("# WORKSPACE_ON_SIGNUP:")).to be < mail
@@ -1274,6 +1268,47 @@ RSpec.describe "Template invariants" do
 
     it "doesn't send .env.example readers to a removed route" do
       expect(File.read(root.join(".env.example"))).not_to include("/registrations/new")
+    end
+  end
+
+  describe "a fork's pending list means something" do
+    let(:source) { File.read(root.join("spec/code_smells/template_invariants_spec.rb")) }
+
+    # A permanent skip teaches people to ignore the list: tag the example, and forks never run it.
+    it "excludes template-only and fork-only examples instead of skipping them" do
+      fork_skip = /skip .*\.fork\.yml/
+
+      expect(source.lines.grep(fork_skip).reject { |line| line.include?("fork_skip") }).to be_empty
+      expect(source.scan(/, :template_only do/).size).to be >= 5
+      expect(source.scan(/, :fork_only do/).size).to be >= 1
+    end
+
+    it "runs the root-only browser flags in the job that runs as root" do
+      expect(File.read(root.join(".github/workflows/devcontainer.yml"))).to include("spec/system/cuprite_driver_config_spec.rb")
+    end
+  end
+
+  describe "bin/fork's rename and CI's comment gate" do
+    before { load Rails.root.join("bin/fork").to_s unless defined?(ForkFlow) }
+
+    # A rename touching a long comment block fails the fork's first PR on a line it didn't write.
+    it "renames no token inside a comment block over two lines", :template_only do
+      long_blocks = ForkFlow::SUBSTITUTIONS.flat_map do |path, substitutions|
+        File.readlines(root.join(path)).slice_when { |a, b| a.match?(/\A\s*#/) != b.match?(/\A\s*#/) }
+            .select { |block| block.first.match?(/\A\s*#/) && block.size > 2 }
+            .select { |block| substitutions.any? { |from, _| block.join.include?(from) } }
+            .map { |block| "#{path}: #{block.first.strip}" }
+      end
+
+      expect(ForkFlow::SUBSTITUTIONS).not_to be_empty
+      expect(long_blocks).to be_empty
+    end
+  end
+
+  describe "gh in a fork" do
+    # With no default, gh offers the template first when a branch isn't pushed yet.
+    it "pushes to the fork's own repository by default, in every clone" do
+      expect(File.read(root.join("bin/setup"))).to include("git config remote.pushDefault origin")
     end
   end
 
@@ -1291,9 +1326,8 @@ RSpec.describe "Template invariants" do
   end
 
   describe "bin/mail-setup can edit the shipped deploy.yml" do
-    it "finds SMTP_ADDRESS under env.clear" do
-      skip "fork — a fork may have rewritten config/deploy.yml" if root.join(".fork.yml").exist?
-      load root.join("bin/mail-setup")
+    it "finds SMTP_ADDRESS under env.clear", :template_only do
+      load root.join("bin/mail-setup") unless defined?(MailSetup)
 
       expect(MailSetup::DeployFile.editable?(File.read(root.join("config/deploy.yml")))).to be(true)
     end
@@ -1404,9 +1438,7 @@ RSpec.describe "Template invariants" do
       expect(keys).to be_empty, "expected no credentials key tracked in git, found: #{keys.join(', ')}"
     end
 
-    it "ships no encrypted credentials from the template itself" do
-      skip "fork — a fork commits the encrypted credentials its image is built from" if root.join(".fork.yml").exist?
-
+    it "ships no encrypted credentials from the template itself", :template_only do
       blobs = tracked.grep(/\.yml\.enc\z/)
       expect(blobs).to be_empty, "expected the template to track no encrypted credentials, found: #{blobs.join(', ')}"
     end
@@ -1897,8 +1929,7 @@ RSpec.describe "Template invariants" do
         "and the cell requires nothing the app never calls (/docs/developer/hot-cell)"
     end
 
-    it "the Hot Cell docs sample keeps every volume deploy.yml already mounts" do
-      skip "fork — bin/fork renames deploy.yml's volumes and leaves the template's docs as they are" if root.join(".fork.yml").exist?
+    it "the Hot Cell docs sample keeps every volume deploy.yml already mounts", :template_only do
       doc = File.read(root.join("app/docs/developer/hot-cell.md"))
       sample = doc.scan(/^ *```yaml\n(.*?)^ *```/m).flatten.find { |block| block.include?("accessories:") }
       existing = YAML.safe_load(File.read(root.join("config/deploy.yml")), aliases: true, permitted_classes: [ Symbol ])["volumes"]
