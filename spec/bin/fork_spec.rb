@@ -364,12 +364,32 @@ RSpec.describe ForkFlow do
       expect(rules).to be > push
     end
 
+    # CI's comment gate reads a fork's first PR, so the rename commit has to pass it.
+    it "writes a .fork.yml header the comment gate accepts" do
+      run_fork(name: "my_app", preset: "none", yes: true)
+
+      expect(repo.join(".fork.yml").readlines.take_while { |line| line.start_with?("#") }.size).to be <= 2
+    end
+
     it "records provenance that round-trips through safe YAML" do
       run_fork(name: "my_app", preset: "none", yes: true)
 
       config = YAML.safe_load_file(repo.join(".fork.yml"))
       expect(config).to include("name" => "my_app", "product_name" => "My App", "preset" => "none")
       expect(config["template_baseline"]).to match(/\A[0-9a-f]{40}\z/)
+    end
+
+    it "tags the commit it forked from, because the template's main may be behind it" do
+      baseline = capture_git("rev-parse", "HEAD")
+      flow = run_fork(name: "my_app", preset: "none", yes: true)
+
+      expect(flow.instance_variable_get(:@todos).join).to include("git tag forks/my_app-baseline #{baseline} ")
+    end
+
+    it "doesn't assume main is the branch that reaches GitHub" do
+      flow = run_fork(name: "my_app", preset: "none", yes: true)
+
+      expect(flow.instance_variable_get(:@todos).join).not_to include("Once main is on GitHub")
     end
 
     it "starts the fork's changelog clean, in the rename commit: the template's releases aren't the fork's" do
@@ -424,6 +444,7 @@ RSpec.describe ForkFlow do
       run_fork(name: "my_app", origin: "git@github.com:me/my_app.git", yes: true)
 
       expect(capture_git("config", "--get", "remote.origin.gh-resolved")).to eq("base")
+      expect(capture_git("config", "--get", "remote.pushDefault")).to eq("origin")
     end
 
     it "makes an origin that was already there gh's default too" do
@@ -431,6 +452,7 @@ RSpec.describe ForkFlow do
       run_fork(name: "my_app", yes: true)
 
       expect(capture_git("config", "--get", "remote.origin.gh-resolved")).to eq("base")
+      expect(capture_git("config", "--get", "remote.pushDefault")).to eq("origin")
     end
 
     # Anchoring matters: an unanchored pattern matches "me/not_modelrails_base",

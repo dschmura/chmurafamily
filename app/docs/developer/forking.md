@@ -82,6 +82,15 @@ copy, the template if you forked the template. `bin/setup` reads the URL and
 adds it as the push-disabled `upstream` in every clone. The script says which
 it did: *template … (origin's GitHub parent)*.
 
+The Fork button copies only the template's default branch, `next`, so your fork
+starts with no `main`. Push your rename, then let `bin/branch-rules` create `main`
+from `next` as it sets up the branches:
+
+```bash
+git push origin next
+bin/branch-rules    # add --solo if you merge your own PRs
+```
+
 Without `gh`, or when GitHub reports no parent, name the template yourself with
 `--template URL`; an explicit flag always wins over the lookup:
 
@@ -114,6 +123,7 @@ git branch --unset-upstream                   # or `git pull` would still pull t
 # Your new repository becomes origin
 git remote add origin git@github.com:YOU/myapp.git
 git config remote.origin.gh-resolved base     # gh otherwise acts on upstream: the template
+git config remote.pushDefault origin          # gh otherwise offers the template first for an unpushed branch
 git push -u origin main
 
 # Activate the fork-owned merge driver (bin/setup also does this for you,
@@ -128,16 +138,17 @@ Two things you'll notice afterwards, both intentional:
 - `git remote -v` shows upstream's push URL as `DISABLED`. That string is not a
   real URL — it makes any accidental `git push upstream` fail loudly instead of
   writing to the template.
-- Your `main` tracks `origin/main` (your repo), so plain `git pull` stays inside
+- Your branch tracks your own repo's copy, so plain `git pull` stays inside
   your app. Upstream only enters when you run `bin/sync`
   ([Pull upstream updates](#pull-upstream-updates)).
 
 Finally, record the cut point in the template repo — it answers "which template
-version is myapp based on?" forever:
+version is myapp based on?" forever. `bin/fork` prints this with the commit filled in,
+which is also `template_baseline` in `.fork.yml`:
 
 ```bash
 # in your modelrails_base checkout
-git tag forks/myapp-baseline main && git push origin forks/myapp-baseline
+git tag forks/myapp-baseline <commit> && git push origin forks/myapp-baseline
 ```
 
 > **Why not GitHub's "Use this template" button, or a GitHub fork?** "Use this
