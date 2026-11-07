@@ -41,6 +41,10 @@ All notable changes to ModelRails are documented here, organized by phase.
 
 - Rails moves to a main commit from 2026-11-04 that carries the fixes released in Rails 8.1.4.1, among them a Strong Parameters bypass and XSS in the `highlight` helper and the MessagePack serializer.
 
+### Security
+
+- The image scan accepts CVE-2026-78661 in Thruster 0.1.27's binary, which never includes the affected HTML parser; the entry lifts when a Thruster release carries the fix.
+
 ## v2026.11.01
 
 ### Security
