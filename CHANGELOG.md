@@ -4,6 +4,19 @@ All notable changes to ModelRails are documented here, organized by phase.
 
 ## [Unreleased]
 
+## v2026.11.07
+
+### Changed
+
+- A fork's clones push to its own repository by default, so `gh` no longer offers the template first for an unpushed branch.
+- Specs that only apply to the template or to a fork are excluded elsewhere rather than showing as pending.
+- A fork's rename commit passes CI's comment check, so its first PR isn't refused on lines it didn't write.
+
+### Fixed
+
+- Pushing from a Fork-button fork no longer fails on a missing `origin/main`, and `bin/branch-rules` creates `main` from `next` when a fork has none.
+- `bin/fork`'s baseline tag names the commit the fork started from, not the template's `main`.
+
 ## v2026.11.06
 
 ### Fixed
