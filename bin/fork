@@ -375,12 +375,16 @@ class ForkFlow
                 "     git remote add origin git@github.com:YOU/#{snake}.git && git push -u origin #{current_branch}"
     end
     # gh otherwise prefers the remote named upstream: the template.
-    sh("git", "-C", @root, "config", "remote.origin.gh-resolved", "base") if origin_present || @opts[:origin]
-    @todos << "Once main is on GitHub, protect the branches: bin/branch-rules " \
+    if origin_present || @opts[:origin]
+      sh("git", "-C", @root, "config", "remote.origin.gh-resolved", "base")
+      # Without it, gh offers the template first when a branch isn't pushed yet.
+      sh("git", "-C", @root, "config", "remote.pushDefault", "origin")
+    end
+    @todos << "Once your branch is on GitHub, protect the branches: bin/branch-rules " \
               "(add --solo if you merge your own PRs; /docs/developer/forking)"
 
     @todos << "Record the cut point, in your TEMPLATE checkout:\n" \
-              "     git tag forks/#{snake}-baseline main && git push origin forks/#{snake}-baseline"
+              "     git tag forks/#{snake}-baseline #{@baseline_sha} && git push origin forks/#{snake}-baseline"
   end
 
   def upstream_taken?
@@ -677,10 +681,11 @@ class ForkFlow
     return if dry_run?
 
     header = <<~HEADER
-      # Fork provenance — written by bin/fork. Do not gate on this file; live
-      # state is derived from the repository. Committed so every clone inherits
-      # the decisions: bin/setup reads `preset` into a teammate's .env, and
-      # `template_baseline` answers "based on which template version?".
+
+      # Fork provenance, written by bin/fork. Do not gate on this file; live state comes from the repository.
+
+      # Committed so every clone inherits the decisions: bin/setup reads `preset`, and `template_baseline` is the cut point.
+
     HEADER
     atomic_write(path_to(FORK_FILE), header + YAML.dump(data.compact))
     @fork_config = nil

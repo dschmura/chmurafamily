@@ -126,6 +126,7 @@ RSpec.describe Sync do
     run_sync
 
     expect(git("config", "remote.origin.gh-resolved")).to eq("base")
+    expect(git("config", "remote.pushDefault")).to eq("origin")
   end
 
   it "lists only the releases next doesn't have yet" do
