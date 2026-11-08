@@ -695,6 +695,20 @@ RSpec.describe ForkFlow do
       expect(gh_calls.grep(/repo create/)).to be_empty
     end
 
+    it "says how to publish when --yes skipped GitHub" do
+      install_fake_gh
+
+      flow = with_fake_gh { run_fork(name: "my_app", yes: true) }
+
+      expect(flow).to have_received(:puts).with(%r{Not published to GitHub.*bin/fork --github OWNER})
+    end
+
+    it "stays quiet about publishing under --no-github" do
+      flow = run_fork(name: "my_app", github: false, yes: true)
+
+      expect(flow).not_to have_received(:puts).with(/Not published/)
+    end
+
     it "takes --github OWNER/NAME as the repo name" do
       install_fake_gh
       git("config", "url.#{github_remote_bare}.insteadOf", "git@github.com:org/other.git")
@@ -882,6 +896,15 @@ RSpec.describe ForkFlow do
       expect(rules_calls).to be_empty
       push = flow.todos.index { |t| t.include?("git push -u origin next") }
       expect(flow.todos.index { |t| t.include?("bin/branch-rules") }).to be > push
+    end
+
+    it "says how to push when --yes skipped an existing origin" do
+      install_fake_gh
+      git("remote", "set-url", "origin", "git@github.com:me/my_app.git")
+
+      flow = with_fake_gh { run_fork(name: "my_app", yes: true) }
+
+      expect(flow).to have_received(:puts).with(%r{Not pushed to origin.*bin/fork --github\z})
     end
 
     it "pushes and protects a forked repo whose origin has no rules yet, on rerun with --github" do

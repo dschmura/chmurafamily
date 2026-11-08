@@ -611,7 +611,7 @@ class ForkFlow
   def step_github!
     return github_dry_run if dry_run? && @opts[:github]
     return github_by_hand if dry_run? || @opts[:github] == false
-    return github_by_hand unless @opts[:github] || interactive?
+    return github_by_hand(unasked: true) unless @opts[:github] || interactive?
 
     if @origin_present
       return github_by_hand unless push_to_origin?
@@ -646,10 +646,20 @@ class ForkFlow
     false
   end
 
-  def github_by_hand(gh_missing: false)
+  def github_by_hand(gh_missing: false, unasked: false)
     say("\n  ! gh isn't installed or signed in, so the GitHub steps are listed by hand.") if gh_missing
+    say_how_to_publish if unasked
     manual_github_todos!
     false
+  end
+
+  # Nobody was there to choose the owner, so the run names the flag that does.
+  def say_how_to_publish
+    if @origin_present
+      say("\n  ! Not pushed to origin: nobody was asked. To push and protect: bin/fork --github")
+    else
+      say("\n  ! Not published to GitHub: nobody chose the owner. To publish: bin/fork --github OWNER")
+    end
   end
 
   def push_to_origin?
