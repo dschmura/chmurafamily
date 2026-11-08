@@ -12,8 +12,8 @@ workflow commercial Rails templates like Jumpstart Pro use.
 
 Three things make the merges cheap:
 
-1. **Shared git history** — your app is a true clone, so `git merge upstream/main`
-   is an ordinary merge.
+1. **Shared git history** — your app is a true clone, so merging a template
+   release (`bin/sync`) is an ordinary merge.
 2. **Fork-owned files** — everything you are expected to rewrite (marketing pages,
    brand strings, your routes, your docs) lives in files upstream never edits again.
 3. **A merge driver** — fork-owned paths are marked `merge=ours` in
@@ -33,28 +33,47 @@ everything else: the application code around the gems.
 
 ## Start a new app
 
-Create an **empty** private repository on GitHub first (no README, no license — it
-must be truly empty). Then:
+Clone the template under your product's name and run `bin/fork`:
 
 ```bash
-git clone git@github.com:dschmura/modelrails_base.git myapp
-cd myapp
+git clone git@github.com:dschmura/modelrails_base.git my_app
+cd my_app
 bin/fork
 ```
 
-`bin/fork` runs **before** `bin/setup`. It asks for your project name and tenancy
-preset, then does the remote surgery and the identity rename in one commit, and
-records your answers in `.fork.yml`. It prints every git command as it runs, so
-you can read what it did — and finish by hand if you ever need to.
+`bin/fork` runs **before** `bin/setup`. It asks for:
+
+- the project name (default: the folder's name, snake_cased),
+- the tenancy preset,
+- the support address users write to,
+- whether to create the GitHub repo, its owner (you or one of your
+  organizations), and whether it's public (the default) or private,
+- whether a second person approves PRs (default: no, you merge your own).
+
+Then it does the remote surgery and the identity rename in one commit, records
+your answers in `.fork.yml`, creates the GitHub repo with `gh`, pushes `next`,
+and protects the branches with `bin/branch-rules` — in that order, so the rules
+never land before your rename does. It prints every command as it runs, so you
+can read what it did, and finish by hand if you ever need to. Without the `gh`
+CLI, it lists the GitHub steps instead.
 
 ```bash
-bin/fork --name myapp --preset personal --origin git@github.com:YOU/myapp.git --yes
+bin/fork --name my_app --preset personal --support-email help@my-app.com --github YOU --yes
 bin/fork --dry-run    # print the plan, change nothing
 ```
 
+Under `--yes` nothing touches GitHub unless you pass `--github` (`--github ORG`
+or `--github ORG/name` picks the owner and the repo's name). `--private` makes a
+private repo; GitHub's free plan can't apply branch rules to one, so `bin/fork`
+warns and, when it can ask, offers to make it public instead. `--team` requires one approval
+on every PR. A blank support address keeps a `support@my_app.example`
+placeholder, and the fork's CI fails until you set a real one.
+
 It refuses to run on a dirty working tree: the identity rename wants to be one
 clean commit you can always find again. Re-running is safe — it detects what is
-already done, and completes a rename that was interrupted partway.
+already done, completes a rename that was interrupted partway, and picks up
+whatever is still missing: a real support address, the GitHub repo, the push, or
+the branch rules.
 
 When run interactively it finishes by offering to run `bin/setup` for you (the
 dev server is not started — that stays your call). Under `--yes`, or when stdin
@@ -63,15 +82,24 @@ isn't a terminal, it never does: scripted and CI runs stay fast and predictable.
 ### From a GitHub fork, or a fork of a fork
 
 The template is meant to be forked, and forks get forked: an organization keeps
-its own synced copy under its own name, and products start from that copy. The
-shortest path is the **Fork** button, then a clone, then `bin/fork` with no
-remote flags at all:
+its own synced copy under its own name, and products start from that copy. Clone
+the copy the way you'd clone the template, and name it with `--template` (below).
+
+If you already pressed GitHub's **Fork** button, that works too, with one extra
+step. A GitHub fork's parent is the template, so GitHub's pull-request page and
+editors aim every new PR at the template. Clone your fork and run `bin/fork`:
 
 ```bash
-git clone git@github.com:YOU/myapp.git
-cd myapp
-bin/fork --name myapp --preset personal --yes
+git clone git@github.com:YOU/my_app.git
+cd my_app
+bin/fork
 ```
+
+Answer yes to *Push next to origin and protect it?* (or pass `--github` with
+`--yes`). Then, on GitHub, open **Settings → General → Leave fork network**, so
+PRs default to your own repository. Leaving after `bin/fork` matters: `bin/fork`
+asks GitHub for the parent to record the template, and `bin/sync` reads that
+record, not the fork network.
 
 Your clone's `origin` is already your product and there is no `upstream` yet.
 Git has no record of what a fork was forked from, but GitHub does, so when
@@ -83,23 +111,18 @@ adds it as the push-disabled `upstream` in every clone. The script says which
 it did: *template … (origin's GitHub parent)*.
 
 The Fork button copies only the template's default branch, `next`, so your fork
-starts with no `main`. Push your rename, then let `bin/branch-rules` create `main`
-from `next` as it sets up the branches:
-
-```bash
-git push origin next
-bin/branch-rules    # add --solo if you merge your own PRs
-```
+starts with no `main`; `bin/branch-rules` creates it from `next` once the rename
+is pushed.
 
 Without `gh`, or when GitHub reports no parent, name the template yourself with
 `--template URL`; an explicit flag always wins over the lookup:
 
 ```bash
-bin/fork --name myapp --preset personal --template git@github.com:ORG/modelrails_base_wads.git --yes
+bin/fork --name my_app --preset personal --template git@github.com:ORG/modelrails_base_wads.git --yes
 ```
 
 `--template` is also how a copy under another name works on the **clone path**
-(`git clone <the copy> myapp`, then `bin/fork --origin <your empty repo>`).
+(`git clone <the copy> my_app`, then `bin/fork --template <the copy>`).
 There `origin` *is* the template, so its GitHub parent would be one hop too far
 and the script deliberately does not ask; `bin/fork` knows the template by
 name — a remote ending in `/modelrails_base` — and `--template` extends that to
@@ -120,11 +143,12 @@ git remote set-url --push origin DISABLED     # before the rename, so no window 
 git remote rename origin upstream             # a stray `git push upstream` now fails loudly
 git branch --unset-upstream                   # or `git pull` would still pull the TEMPLATE
 
-# Your new repository becomes origin
-git remote add origin git@github.com:YOU/myapp.git
+# Your new repository becomes origin (create it EMPTY on GitHub: no README, no license)
+git remote add origin git@github.com:YOU/my_app.git
 git config remote.origin.gh-resolved base     # gh otherwise acts on upstream: the template
 git config remote.pushDefault origin          # gh otherwise offers the template first for an unpushed branch
-git push -u origin main
+git push -u origin next
+bin/branch-rules --solo                       # only after the push: the rules then refuse direct pushes
 
 # Activate the fork-owned merge driver (bin/setup also does this for you,
 # but doing it now means your very first merge is already covered)
@@ -142,21 +166,16 @@ Two things you'll notice afterwards, both intentional:
   your app. Upstream only enters when you run `bin/sync`
   ([Pull upstream updates](#pull-upstream-updates)).
 
-Finally, record the cut point in the template repo — it answers "which template
-version is myapp based on?" forever. `bin/fork` prints this with the commit filled in,
-which is also `template_baseline` in `.fork.yml`:
-
-```bash
-# in your modelrails_base checkout
-git tag forks/myapp-baseline <commit> && git push origin forks/myapp-baseline
-```
+`.fork.yml`'s `template_baseline` records the template commit you started from,
+which answers "which template version is my_app based on?" forever.
 
 > **Why not GitHub's "Use this template" button, or a GitHub fork?** "Use this
 > template" squashes the entire history into one unrelated commit — every later
-> `git merge upstream/main` would need `--allow-unrelated-histories` and conflict
-> on everything both sides touched. And GitHub will not fork a repository into
-> the account that already owns it. Clone + re-pointed remotes gives you a
-> private repo **and** mergeable history.
+> merge of a template release would need `--allow-unrelated-histories` and
+> conflict on everything both sides touched. A GitHub fork keeps the history but
+> makes the template its parent, so pull requests default to the template, and
+> GitHub will not fork a repository into the account that already owns it.
+> Clone + re-pointed remotes gives you a standalone repo **and** mergeable history.
 
 **Every teammate** who clones your new repository runs `bin/setup` — and only
 that. They must not run `bin/fork`; the identity rename is already committed, and
@@ -278,7 +297,8 @@ The template's default flow uses three branches:
 | `release/<name>` | A release, cut from `next` by `bin/release cut` and deployed to staging for review. Fixes and reverts land on it by PR. |
 | `main` | Production. Takes a release by PR, with merge commits only. |
 
-Once `main` is on GitHub, run:
+`bin/fork` runs this for you once your rename is on GitHub. To run it yourself,
+or to change your mind later:
 
 ```bash
 bin/branch-rules          # one approval on every PR
@@ -293,7 +313,7 @@ the rulesets in `config/github/rulesets/`. Under those rules, `next`,
 `test` pass on an up-to-date branch. Rerunning it updates the rulesets in
 place. It names any other ruleset on the repo, which you reconcile by hand.
 
-- **Push `main` first.** Once the rules apply, a direct push to `main` is refused.
+- **Push first.** Once the rules apply, a direct push to `next` or `main` is refused.
 - **`--solo`** exists because GitHub refuses an approval from a PR's own author.
 - **No one bypasses.** A bypass, even "through pull requests only", lets an
   admin's ordinary merge skip the approval and the up-to-date check, and nothing
@@ -313,7 +333,7 @@ place. It names any other ruleset on the repo, which you reconcile by hand.
 
 Cutting, reviewing and shipping a release, hotfixes, and the merge-back are in
 [Releasing](releasing). To change the flow, edit the JSON files, or replace the
-script. `bin/fork` names it only as a next step.
+script.
 
 ## Fork-owned files
 
