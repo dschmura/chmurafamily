@@ -349,11 +349,28 @@ RSpec.describe ForkFlow do
     end
 
     it "replaces the template support address with an unmistakable placeholder" do
-      run_fork(name: "my_app", yes: true)
+      flow = run_fork(name: "my_app", yes: true)
 
       pages = repo.join("config/locales/en/pages.en.yml").read
       expect(pages).not_to include("support@example.com")
       expect(pages).to include("support@my_app.example")
+      expect(flow.todos.join).to include("CI fails until")
+    end
+
+    it "writes the given support address into the rename commit" do
+      flow = run_fork(name: "my_app", support_email: "help@my-app.com", yes: true)
+
+      pages = capture_git("show", "HEAD:config/locales/en/pages.en.yml")
+      expect(pages).to include("help@my-app.com")
+      expect(pages).not_to include(".example")
+      expect(flow.todos.join).not_to include("support address")
+    end
+
+    it "refuses a placeholder-shaped support address before changing anything" do
+      [ "help@x.example", "help@example.com", "nope" ].each do |address|
+        expect { run_fork(name: "my_app", support_email: address, yes: true) }.to raise_error(SystemExit)
+        expect(capture_git("log", "--oneline").lines.size).to eq(1)
+      end
     end
 
     it "protects the branches after main reaches GitHub, since the rules then refuse a direct push" do

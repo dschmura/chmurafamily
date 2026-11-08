@@ -125,8 +125,12 @@ class ForkFlow
   # miss, and replaces a hand-maintained allow-list of the affected files.
   BLOCK_COMMENT_OPEN  = %r{/\*|<%\#|<!--}
   BLOCK_COMMENT_CLOSE = %r{\*/|%>|-->}
+  # The shapes the fork_only placeholder check in template_invariants_spec.rb fails on.
+  PLACEHOLDER_EMAIL = /[\w.+-]+@[\w.-]+\.example\b|[\w.+-]+@example\.com\b/
 
   attr_reader :todos
+
+  def self.placeholder_email?(address) = !address.include?("@") || address.match?(PLACEHOLDER_EMAIL)
 
   def initialize(options, root: Dir.pwd)
     @opts = options
@@ -167,7 +171,7 @@ class ForkFlow
       title:             title,
       quoted_title:      %("#{title}"),
       open_quoted_title: %("#{title}),
-      support_email:     "support@#{snake}.example"
+      support_email:     support_email
     }.fetch(key)
   end
 
@@ -276,6 +280,7 @@ class ForkFlow
     @snake = normalize_name(@opts[:name] || ask("Project name?", File.basename(@root)))
     @preset = @opts[:preset] || (ask_preset unless @opts[:yes] || !$stdin.tty?)
     validate_preset!(@preset) if @preset
+    @support_email = collect_support_email
 
     say("Project: #{snake}  (module #{camel} · product \"#{title}\" · preset #{@preset || 'undecided'})")
   end
@@ -323,6 +328,25 @@ class ForkFlow
     answer = ask("  Choose 1-#{PRESETS.size}, or blank to defer", "")
     PRESETS[Integer(answer) - 1] if answer.match?(/\A[1-#{PRESETS.size}]\z/)
   end
+
+  # nil means "use the placeholder": the fork_only spec then keeps CI red until it's set.
+  def collect_support_email
+    if (given = @opts[:support_email])
+      return given unless self.class.placeholder_email?(given)
+
+      abort("bin/fork: #{given.inspect} isn't a real support address (CI rejects *.example and example.com)")
+    end
+
+    loop do
+      answer = ask("Support address (where users write for help; blank to set later)", "")
+      return nil if answer.empty?
+      return answer unless self.class.placeholder_email?(answer)
+
+      say("  ! #{answer.inspect} isn't a real address; CI rejects *.example and example.com.")
+    end
+  end
+
+  def support_email = @support_email || "support@#{snake}.example"
 
   def step_remotes!
     say("\n== Remotes ==")
@@ -439,8 +463,10 @@ class ForkFlow
 
     @todos << "Rewrite the product description in config/locales/en/brand.en.yml " \
               "(still the template's sentence — bin/fork renames, it doesn't write your copy)."
-    @todos << "Set a real support address in config/locales/en/pages.en.yml " \
-              "(now support@#{snake}.example — an unmistakable placeholder, not a mailbox)."
+    unless @support_email
+      @todos << "Set a real support address in config/locales/en/pages.en.yml " \
+                "(now #{support_email}; CI fails until it is set): edit, then commit."
+    end
     @todos << "Rewrite marketing copy: config/locales/en/pages.en.yml + app/views/pages/ (fork-owned)."
     @todos << "Replace the brand mark: app/views/shared/_site_mark.html.erb (one <svg>) and the icon set in public/ " \
               "(fork-owned — bin/fork renames strings, never artwork)."
@@ -723,6 +749,7 @@ if $PROGRAM_NAME == __FILE__
     o.on("--name NAME", "Project name (default: directory name; snake_cased)") { |v| options[:name] = v }
     o.on("--origin URL", "Your repository's git URL (becomes the origin remote)") { |v| options[:origin] = v }
     o.on("--template URL", "The template's git URL when it is a mirror under another name (recorded in .fork.yml; an origin or upstream equal to it counts as the template)") { |v| options[:template] = v }
+    o.on("--support-email ADDRESS", "Where users write for help (default: a placeholder CI refuses)") { |v| options[:support_email] = v }
     o.on("--preset PRESET", "Tenancy preset: #{ForkFlow::PRESETS.join('/')}") { |v| options[:preset] = v }
     o.on("--yes", "Non-interactive: accept defaults, never prompt") { options[:yes] = true }
     o.on("--dry-run", "Print the plan without changing anything") { options[:dry_run] = true }
