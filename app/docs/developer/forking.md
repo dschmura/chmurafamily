@@ -51,9 +51,9 @@ bin/fork
 - whether a second person approves PRs (default: no, you merge your own).
 
 Then it does the remote surgery and the identity rename in one commit, records
-your answers in `.fork.yml`, creates the GitHub repo with `gh`, pushes `next`,
+the name, preset and template in `.fork.yml`, creates the GitHub repo with `gh`, pushes `next`,
 and protects the branches with `bin/branch-rules` — in that order, so the rules
-never land before your rename does. It prints every command as it runs, so you
+never land before your rename does. It prints each step as it runs, so you
 can read what it did, and finish by hand if you ever need to. Without the `gh`
 CLI, it lists the GitHub steps instead.
 
@@ -62,7 +62,7 @@ bin/fork --name my_app --preset personal --support-email help@my-app.com --githu
 bin/fork --dry-run    # print the plan, change nothing
 ```
 
-Under `--yes` nothing touches GitHub unless you pass `--github` (`--github ORG`
+Under `--yes` nothing is created or pushed on GitHub unless you pass `--github` (`--github ORG`
 or `--github ORG/name` picks the owner and the repo's name). `--private` makes a
 private repo; GitHub's free plan can't apply branch rules to one, so `bin/fork`
 warns and, when it can ask, offers to make it public instead. `--team` requires one approval
@@ -72,8 +72,8 @@ placeholder, and the fork's CI fails until you set a real one.
 It refuses to run on a dirty working tree: the identity rename wants to be one
 clean commit you can always find again. Re-running is safe — it detects what is
 already done, completes a rename that was interrupted partway, and picks up
-whatever is still missing: a real support address, the GitHub repo, the push, or
-the branch rules.
+whatever is still missing: a real support address, and (when you answer yes, or
+pass `--github`) the GitHub repo, the push, or the branch rules.
 
 When run interactively it finishes by offering to run `bin/setup` for you (the
 dev server is not started — that stays your call). Under `--yes`, or when stdin

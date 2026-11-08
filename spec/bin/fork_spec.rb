@@ -121,7 +121,7 @@ RSpec.describe ForkFlow do
       "auth status" => "exit 0",
       "api user --jq .login" => "echo me",
       "api user --jq .plan.name" => "echo pro",
-      "config get git_protocol" => "echo ssh"
+      "config get git_protocol -h github.com" => "echo ssh"
     }
   end
 
@@ -705,7 +705,7 @@ RSpec.describe ForkFlow do
     end
 
     it "uses https when gh is set to https" do
-      install_fake_gh("config get git_protocol" => "echo https")
+      install_fake_gh("config get git_protocol -h github.com" => "echo https", "config get git_protocol" => "echo ssh")
       git("config", "url.#{github_remote_bare}.insteadOf", "https://github.com/me/my_app.git")
 
       with_fake_gh { run_fork(name: "my_app", github: "me", yes: true) }
@@ -714,20 +714,44 @@ RSpec.describe ForkFlow do
       expect(remote_next).to eq(capture_git("rev-parse", "HEAD"))
     end
 
-    it "creates nothing and pushes nothing when gh repo create fails" do
+    it "creates nothing and pushes nothing when gh repo create fails, and keeps the rest of the run" do
       install_fake_gh("repo create*" => "echo 'name already exists on this account' >&2; exit 1")
 
-      expect { with_fake_gh { run_fork(name: "my_app", github: "me", yes: true) } }
-        .to raise_error(SystemExit).and output(/--origin .* --github/).to_stderr
+      flow = with_fake_gh { run_fork(name: "my_app", github: "me", yes: true) }
+
       expect(system(ForkFlow::CLEAN_GIT_ENV, "git", "-C", repo.to_s, "remote", "get-url", "origin", err: File::NULL)).to be(false)
       expect(remote_next).to be_empty
+      expect(flow.todos.join).to match(/--origin \S+ --github/).and include("Rewrite marketing copy")
     end
 
-    it "refuses to push from a branch other than next" do
+    it "finishes with the rerun it advised after a failed create" do
+      install_fake_gh("repo create*" => "echo 'name already exists on this account' >&2; exit 1",
+                      "api repos/me/my_app/rulesets --jq length" => "echo 0")
+      with_fake_gh { run_fork(name: "my_app", github: "me", yes: true) }
+
+      with_fake_gh { run_fork(origin: "git@github.com:me/my_app.git", github: true, yes: true) }
+
+      expect(gh_calls.grep(/repo create/).size).to eq(1)
+      expect(capture_git("config", "--get", "remote.origin.url")).to eq("git@github.com:me/my_app.git")
+      expect(remote_next).to eq(capture_git("rev-parse", "HEAD"))
+    end
+
+    it "refuses a resume that names both an origin and a new repo's owner" do
+      install_fake_gh
+      with_fake_gh { run_fork(name: "my_app", yes: true) }
+
+      expect { with_fake_gh { run_fork(origin: "git@github.com:me/my_app.git", github: "org", yes: true) } }
+        .to raise_error(SystemExit)
+      expect(gh_calls.grep(/repo create/)).to be_empty
+    end
+
+    it "refuses --github from a branch other than next before renaming anything" do
       install_fake_gh
       git("branch", "-m", "next", "wip")
 
-      expect { with_fake_gh { run_fork(name: "my_app", github: "me", yes: true) } }.to raise_error(SystemExit)
+      expect { with_fake_gh { run_fork(name: "my_app", github: "me", yes: true) } }
+        .to raise_error(SystemExit).and output(/git switch next/).to_stderr
+      expect(capture_git("log", "--oneline").lines.size).to eq(1)
       expect(gh_calls.grep(/repo create/)).to be_empty
     end
 
@@ -860,6 +884,38 @@ RSpec.describe ForkFlow do
       expect(flow.todos.index { |t| t.include?("bin/branch-rules") }).to be > push
     end
 
+    it "pushes and protects a forked repo whose origin has no rules yet, on rerun with --github" do
+      install_fake_gh("api repos/me/my_app/rulesets --jq length" => "echo 0")
+      git("remote", "set-url", "origin", "git@github.com:me/my_app.git")
+      with_fake_gh { run_fork(name: "my_app", yes: true) }
+
+      with_fake_gh { run_fork(github: true, yes: true) }
+
+      expect(remote_next).to eq(capture_git("rev-parse", "HEAD"))
+      expect(rules_calls).to eq([ "--solo" ])
+    end
+
+    it "leaves a forked repo that already has rules alone on rerun" do
+      install_fake_gh("api repos/me/my_app/rulesets --jq length" => "echo 3")
+      git("remote", "set-url", "origin", "git@github.com:me/my_app.git")
+      with_fake_gh { run_fork(name: "my_app", yes: true) }
+
+      with_fake_gh { run_fork(github: true, yes: true) }
+
+      expect(remote_next).to be_empty
+      expect(rules_calls).to be_empty
+    end
+
+    it "pushes to a repo that already exists with --origin URL --github" do
+      install_fake_gh
+
+      with_fake_gh { run_fork(name: "my_app", origin: "git@github.com:me/my_app.git", github: true, yes: true) }
+
+      expect(gh_calls.grep(/repo create/)).to be_empty
+      expect(remote_next).to eq(capture_git("rev-parse", "HEAD"))
+      expect(rules_calls).to eq([ "--solo" ])
+    end
+
     it "applies no rules when the push is rejected" do
       install_fake_gh
       empty_tree = capture_git("hash-object", "-t", "tree", "/dev/null")
@@ -895,6 +951,19 @@ RSpec.describe ForkFlow do
       expect(capture_git("log", "-1", "--format=%s")).to eq("Set the support address")
       expect(capture_git("show", "--name-only", "--format=", "HEAD")).to eq("config/locales/en/pages.en.yml")
       expect(capture_git("show", "HEAD:config/locales/en/pages.en.yml")).to include("help@my-app.com")
+    end
+
+    it "leaves uncommitted edits to pages.en.yml out of the support-address commit" do
+      run_fork(name: "my_app", yes: true)
+      before_head = capture_git("rev-parse", "HEAD")
+      pages = repo.join("config/locales/en/pages.en.yml")
+      pages.write(pages.read + "    draft: \"half-written copy\"\n")
+
+      flow = run_fork(support_email: "help@my-app.com", yes: true)
+
+      expect(capture_git("rev-parse", "HEAD")).to eq(before_head)
+      expect(pages.read).to include("half-written copy")
+      expect(flow.todos.join).to include("support address")
     end
 
     # The script's headline claim. config/application.rb is the first file

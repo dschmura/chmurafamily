@@ -283,8 +283,10 @@ class ForkFlow
     @preset = @opts[:preset] || (ask_preset unless @opts[:yes] || !$stdin.tty?)
     validate_preset!(@preset) if @preset
     @support_email = collect_support_email
-    if @opts[:origin] && @opts[:github].is_a?(String)
-      abort("bin/fork: use --github OWNER on its own, or --origin URL --github (push to a repo that exists)")
+    check_github_flags!
+    if @opts[:github] && current_branch != "next"
+      abort("bin/fork: --github pushes next, but this checkout is on #{current_branch}. " \
+            "Run git switch next, then rerun bin/fork.")
     end
 
     say("Project: #{snake}  (module #{camel} · product \"#{title}\" · preset #{@preset || 'undecided'})")
@@ -553,9 +555,15 @@ class ForkFlow
   def resume_forked!
     report_already_forked!
     @snake = fork_config["name"]
+    check_github_flags!
     set_support_address_on_fork!
     _, status = capture("git", "-C", @root, "remote", "get-url", "origin")
     @origin_present = status.zero?
+    if !@origin_present && @opts[:origin]
+      sh("git", "-C", @root, "remote", "add", "origin", @opts[:origin])
+      @origin_present = true
+      point_gh_at_origin!
+    end
     return unless @opts[:github] || interactive?
     return if @origin_present && branch_rules_present?
 
@@ -568,6 +576,13 @@ class ForkFlow
     content = File.read(path_to(path))
     placeholder = content[PLACEHOLDER_EMAIL]
     return unless placeholder && (address = collect_support_email)
+
+    dirty, = capture("git", "-C", @root, "status", "--porcelain", "--", path)
+    unless dirty.empty?
+      say("  ! #{path} has uncommitted edits, so the support address wasn't set.")
+      return @todos << "Commit or stash your edits to #{path}, then set the support address: " \
+                       "bin/fork --support-email #{address}"
+    end
 
     act(%(#{path}: "#{placeholder}" → "#{address}"))
     return if dry_run?
@@ -602,19 +617,20 @@ class ForkFlow
       return github_by_hand unless push_to_origin?
 
       say("\n== GitHub ==")
-      require_next_branch!
-      return push_next
+      return next_branch? && push_next
     end
 
     login = github_login
     return github_by_hand(gh_missing: @opts[:github] && !login) unless login && create_github_repo?
 
     say("\n== GitHub ==")
-    require_next_branch!
+    return false unless next_branch?
+
     owner, name = github_target(login)
     visibility = github_visibility(owner, login)
     url = github_url(owner, name)
-    create_github_repo!(owner, name, visibility, url)
+    return false unless create_github_repo!(owner, name, visibility, url)
+
     sh("git", "-C", @root, "remote", "add", "origin", url)
     @origin_present = true
     point_gh_at_origin!
@@ -642,11 +658,18 @@ class ForkFlow
     interactive? && ask("\nPush next to origin and protect it? (Y/n)", "Y").match?(/\A[Yy]/)
   end
 
-  def require_next_branch!
-    return if current_branch == "next"
+  def check_github_flags!
+    return unless @opts[:origin] && @opts[:github].is_a?(String)
 
-    abort("bin/fork: the GitHub step pushes next, but this checkout is on #{current_branch}. " \
-          "Run git switch next, then rerun bin/fork.")
+    abort("bin/fork: use --github OWNER on its own, or --origin URL --github (push to a repo that exists)")
+  end
+
+  def next_branch?
+    return true if current_branch == "next"
+
+    say("  ! The GitHub step pushes next, but this checkout is on #{current_branch}.")
+    @todos << "Switch to the branch with the rename, merge it into next, push next, then: bin/branch-rules --solo"
+    false
   end
 
   def step_branch_rules!
@@ -717,20 +740,19 @@ class ForkFlow
   end
 
   def github_url(owner, name)
-    protocol, = capture("gh", "config", "get", "git_protocol")
+    protocol, = capture("gh", "config", "get", "git_protocol", "-h", "github.com")
     protocol == "https" ? "https://github.com/#{owner}/#{name}.git" : "git@github.com:#{owner}/#{name}.git"
   end
 
   def create_github_repo!(owner, name, visibility, url)
     act("create the GitHub repo #{owner}/#{name} (#{visibility})")
     out = IO.popen(CLEAN_GIT_ENV, [ "gh", "repo", "create", "#{owner}/#{name}", "--#{visibility}" ], err: [ :child, :out ], &:read)
-    return if $?.success?
+    return true if $?.success?
 
-    abort(<<~MSG)
-      bin/fork: gh repo create #{owner}/#{name} failed: #{out.strip}
-        Nothing was pushed; the rename is committed here. Fix that and rerun bin/fork,
-        or, if the repo already exists: bin/fork --origin #{url} --github
-    MSG
+    say("  ! gh repo create #{owner}/#{name} failed: #{out.strip}\n    Nothing was pushed; the rename is committed here.")
+    @todos << "Create the GitHub repo: fix the error above and rerun bin/fork --github #{owner}/#{name}, " \
+              "or, if the repo already exists: bin/fork --origin #{url} --github"
+    false
   end
 
   def push_next
