@@ -1,1 +1,0 @@
-- `bin/fork` creates your GitHub repo, pushes `next` and protects the branches, and asks for the support address.
