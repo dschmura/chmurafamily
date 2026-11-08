@@ -152,6 +152,7 @@ class ForkFlow
     step_rename!
     step_preset!(@preset)
     step_verify!
+    step_github!
     @todos << "Set up outbound mail, which production requires: bin/mail-setup"
     print_summary!
     offer_mail_setup! if offer_setup!
@@ -281,6 +282,9 @@ class ForkFlow
     @preset = @opts[:preset] || (ask_preset unless @opts[:yes] || !$stdin.tty?)
     validate_preset!(@preset) if @preset
     @support_email = collect_support_email
+    if @opts[:origin] && @opts[:github].is_a?(String)
+      abort("bin/fork: use --github OWNER on its own, or --origin URL --github (push to a repo that exists)")
+    end
 
     say("Project: #{snake}  (module #{camel} · product \"#{title}\" · preset #{@preset || 'undecided'})")
   end
@@ -393,22 +397,30 @@ class ForkFlow
       say("  ! --origin ignored: an origin remote already exists") if @opts[:origin]
     elsif @opts[:origin]
       sh("git", "-C", @root, "remote", "add", "origin", @opts[:origin])
-      @todos << "Push when ready: git push -u origin #{current_branch}"
-    else
-      @todos << "Add your repository (create it EMPTY on GitHub first — no README/license):\n" \
-                "     git remote add origin git@github.com:YOU/#{snake}.git && git push -u origin #{current_branch}"
     end
-    # gh otherwise prefers the remote named upstream: the template.
-    if origin_present || @opts[:origin]
-      sh("git", "-C", @root, "config", "remote.origin.gh-resolved", "base")
-      # Without it, gh offers the template first when a branch isn't pushed yet.
-      sh("git", "-C", @root, "config", "remote.pushDefault", "origin")
-    end
-    @todos << "Once your branch is on GitHub, protect the branches: bin/branch-rules " \
-              "(add --solo if you merge your own PRs; /docs/developer/forking)"
+    @origin_present = origin_present || !@opts[:origin].nil?
+    point_gh_at_origin! if @origin_present
 
     @todos << "Record the cut point, in your TEMPLATE checkout:\n" \
               "     git tag forks/#{snake}-baseline #{@baseline_sha} && git push origin forks/#{snake}-baseline"
+  end
+
+  # gh otherwise prefers the remote named upstream: the template.
+  def point_gh_at_origin!
+    sh("git", "-C", @root, "config", "remote.origin.gh-resolved", "base")
+    # Without it, gh offers the template first when a branch isn't pushed yet.
+    sh("git", "-C", @root, "config", "remote.pushDefault", "origin")
+  end
+
+  def manual_github_todos!
+    @todos << if @origin_present
+      "Push when ready: git push -u origin #{current_branch}"
+    else
+      "Add your repository (create it EMPTY on GitHub first — no README/license):\n" \
+        "     git remote add origin git@github.com:YOU/#{snake}.git && git push -u origin #{current_branch}"
+    end
+    @todos << "Once your branch is on GitHub, protect the branches: bin/branch-rules " \
+              "(add --solo if you merge your own PRs; /docs/developer/forking)"
   end
 
   def upstream_taken?
@@ -540,6 +552,104 @@ class ForkFlow
     say("  Nothing renamed — the identity rename is committed (#{FORK_FILE} records it).")
     say("  Per-clone setup (upstream remote, merge driver, .env preset) is bin/setup.")
     say("\nNext: bin/setup")
+  end
+
+  # True once origin holds this checkout's next; branch rules wait for that.
+  def step_github!
+    login = github_login unless dry_run? || @origin_present || @opts[:github] == false
+    unless login && create_github_repo?
+      say("\n  ! gh isn't installed or signed in, so the GitHub steps are listed by hand.") if @opts[:github] && !login && !dry_run?
+      manual_github_todos!
+      return false
+    end
+
+    say("\n== GitHub ==")
+    unless current_branch == "next"
+      abort("bin/fork: the GitHub step pushes next, but this checkout is on #{current_branch}. " \
+            "Run git switch next, then rerun bin/fork.")
+    end
+    owner, name = github_target(login)
+    visibility = github_visibility(owner, login)
+    url = github_url(owner, name)
+    create_github_repo!(owner, name, visibility, url)
+    sh("git", "-C", @root, "remote", "add", "origin", url)
+    @origin_present = true
+    point_gh_at_origin!
+    push_next
+  end
+
+  def github_login
+    _, status = capture("gh", "auth", "status")
+    return nil unless status.zero?
+
+    login, = capture("gh", "api", "user", "--jq", ".login")
+    login unless login.empty?
+  rescue Errno::ENOENT
+    nil
+  end
+
+  def create_github_repo?
+    return true if @opts[:github]
+
+    interactive? && ask("\nCreate the GitHub repo and push next to it? (Y/n)", "Y").match?(/\A[Yy]/)
+  end
+
+  def github_target(login)
+    given = @opts[:github] if @opts[:github].is_a?(String)
+    if given.nil? && interactive?
+      orgs, = capture("gh", "api", "user/orgs", "--jq", ".[].login")
+      say("  Your organizations: #{orgs.split.join(', ')}") unless orgs.empty?
+      given = ask("GitHub owner (or OWNER/NAME)", login)
+    end
+    owner, name = (given || login).split("/", 2)
+    [ owner, name || snake ]
+  end
+
+  def github_visibility(owner, login)
+    answer = @opts[:visibility] || (interactive? ? ask("Public or private?", "public") : "public")
+    visibility = answer.match?(/\Apriv/i) ? "private" : "public"
+    return visibility unless visibility == "private" && free_plan?(owner, login)
+
+    say("  ! #{owner} is on GitHub's free plan: a private repo there can't have branch rules, " \
+        "and its Actions minutes are capped.")
+    return "public" if interactive? && ask("Make it public instead? (Y/n)", "Y").match?(/\A[Yy]/)
+
+    @rules_blocked = true
+    @todos << "Your private repo on GitHub's free plan has no branch rules. " \
+              "After upgrading the plan, or making the repo public: bin/branch-rules --solo"
+    visibility
+  end
+
+  def free_plan?(owner, login)
+    plan, status = capture("gh", "api", owner == login ? "user" : "orgs/#{owner}", "--jq", ".plan.name")
+    status.zero? && plan == "free"
+  end
+
+  def github_url(owner, name)
+    protocol, = capture("gh", "config", "get", "git_protocol")
+    protocol == "https" ? "https://github.com/#{owner}/#{name}.git" : "git@github.com:#{owner}/#{name}.git"
+  end
+
+  def create_github_repo!(owner, name, visibility, url)
+    act("create the GitHub repo #{owner}/#{name} (#{visibility})")
+    out = IO.popen(CLEAN_GIT_ENV, [ "gh", "repo", "create", "#{owner}/#{name}", "--#{visibility}" ], err: [ :child, :out ], &:read)
+    return if $?.success?
+
+    abort(<<~MSG)
+      bin/fork: gh repo create #{owner}/#{name} failed: #{out.strip}
+        Nothing was pushed; the rename is committed here. Fix that and rerun bin/fork,
+        or, if the repo already exists: bin/fork --origin #{url} --github
+    MSG
+  end
+
+  def push_next
+    say("  $ git push -u origin next")
+    return true if system(CLEAN_GIT_ENV, "git", "-C", @root, "push", "-u", "origin", "next")
+
+    say("  ! The push failed, so the branches are not protected yet.")
+    @todos << "Push the rename: git push -u origin next"
+    @todos << "Then protect the branches: bin/branch-rules --solo"
+    false
   end
 
   def step_verify!
@@ -750,6 +860,11 @@ if $PROGRAM_NAME == __FILE__
     o.on("--origin URL", "Your repository's git URL (becomes the origin remote)") { |v| options[:origin] = v }
     o.on("--template URL", "The template's git URL when it is a mirror under another name (recorded in .fork.yml; an origin or upstream equal to it counts as the template)") { |v| options[:template] = v }
     o.on("--support-email ADDRESS", "Where users write for help (default: a placeholder CI refuses)") { |v| options[:support_email] = v }
+    o.on("--github [OWNER[/NAME]]", "Create the GitHub repo (default owner: you; name: the project), push next, protect it") { |v| options[:github] = v || true }
+    o.on("--no-github", "Skip GitHub; print the steps instead") { options[:github] = false }
+    o.on("--public", "New GitHub repo is public (default)") { options[:visibility] = "public" }
+    o.on("--private", "New GitHub repo is private") { options[:visibility] = "private" }
+    o.on("--team", "Branch rules require one approval (default: solo)") { options[:team] = true }
     o.on("--preset PRESET", "Tenancy preset: #{ForkFlow::PRESETS.join('/')}") { |v| options[:preset] = v }
     o.on("--yes", "Non-interactive: accept defaults, never prompt") { options[:yes] = true }
     o.on("--dry-run", "Print the plan without changing anything") { options[:dry_run] = true }

@@ -100,9 +100,43 @@ RSpec.describe ForkFlow do
   def run_fork(opts = {})
     flow = described_class.new(opts, root: repo.to_s)
     allow(flow).to receive(:puts) # progress banners would read as real failures
+    yield flow if block_given?
     silence_stdio { flow.run }
     flow
   end
+
+  let(:bin_dir) { workdir.join("bin") }
+  let(:gh_log) { workdir.join("gh.log") }
+
+  def with_path(*dirs)
+    original = ENV["PATH"]
+    ENV["PATH"] = dirs.join(":")
+    yield
+  ensure
+    ENV["PATH"] = original
+  end
+
+  let(:gh_defaults) do
+    {
+      "auth status" => "exit 0",
+      "api user --jq .login" => "echo me",
+      "api user --jq .plan.name" => "echo pro",
+      "config get git_protocol" => "echo ssh"
+    }
+  end
+
+  # A fake gh that logs every call and answers by pattern; earlier patterns win.
+  def install_fake_gh(cases = {})
+    bin_dir.mkpath
+    arms = cases.merge(gh_defaults) { |_, given, _| given }.map { |pattern, body| "  #{pattern.gsub(" ", "\\ ")}) #{body} ;;" }
+    gh = bin_dir.join("gh")
+    gh.write("#!/bin/sh\necho \"$*\" >> #{gh_log}\ncase \"$*\" in\n#{arms.join("\n")}\nesac\n")
+    gh.chmod(0o755)
+  end
+
+  def gh_calls = gh_log.exist? ? gh_log.readlines(chomp: true) : []
+
+  def with_fake_gh(&) = with_path(bin_dir.to_s, ENV["PATH"], &)
 
   # The real git subprocesses write to fd 1 directly, so stubbing `puts` isn't
   # enough — "[main abc123] Rename identity" lands in the suite's own output.
@@ -559,23 +593,9 @@ RSpec.describe ForkFlow do
   # fake gh below answers only for the repo it is asked about, so a wrong
   # owner/repo parse reads as "GitHub has no parent", not as a pass.
   describe "deriving the template from GitHub" do
-    let(:bin_dir) { workdir.join("bin") }
     let(:parent_url) { "git@github.com:org/modelrails_base_wads.git" }
 
-    def with_path(*dirs)
-      original = ENV["PATH"]
-      ENV["PATH"] = dirs.join(":")
-      yield
-    ensure
-      ENV["PATH"] = original
-    end
-
-    def install_fake_gh
-      bin_dir.mkpath
-      gh = bin_dir.join("gh")
-      gh.write("#!/bin/sh\ncase \"$*\" in\n  *repos/me/my_app*) echo \"#{parent_url}\" ;;\nesac\n")
-      gh.chmod(0o755)
-    end
+    def install_parent_gh = install_fake_gh("*repos/me/my_app*" => %(echo "#{parent_url}"))
 
     def fork_config
       YAML.safe_load_file(repo.join(".fork.yml"))
@@ -584,7 +604,7 @@ RSpec.describe ForkFlow do
     before { git("remote", "set-url", "origin", "git@github.com:me/my_app.git") }
 
     it "records origin's GitHub parent as the template when gh can answer" do
-      install_fake_gh
+      install_parent_gh
 
       with_path(bin_dir.to_s, ENV["PATH"]) { run_fork(name: "my_app", yes: true) }
 
@@ -593,7 +613,7 @@ RSpec.describe ForkFlow do
     end
 
     it "prefers an explicit --template over GitHub's answer" do
-      install_fake_gh
+      install_parent_gh
 
       with_path(bin_dir.to_s, ENV["PATH"]) { run_fork(name: "my_app", template: "git@github.com:org/other.git", yes: true) }
 
@@ -601,7 +621,7 @@ RSpec.describe ForkFlow do
     end
 
     it "records no template when GitHub reports no parent" do
-      install_fake_gh
+      install_parent_gh
       git("remote", "set-url", "origin", "git@github.com:me/plain_repo.git")
 
       with_path(bin_dir.to_s, ENV["PATH"]) { run_fork(name: "my_app", yes: true) }
@@ -613,7 +633,7 @@ RSpec.describe ForkFlow do
     # template's own parent — recording that would point upstream one hop too
     # far. --origin is the signal for that path; --template names the mirror.
     it "does not ask GitHub on the clone path (--origin given)" do
-      install_fake_gh
+      install_parent_gh
 
       with_path(bin_dir.to_s, ENV["PATH"]) { run_fork(name: "my_app", origin: "git@github.com:me/other.git", yes: true) }
 
@@ -631,6 +651,117 @@ RSpec.describe ForkFlow do
 
       expect(fork_config).not_to have_key("template_url")
       expect(capture_git("remote")).not_to include("upstream")
+    end
+  end
+
+  # Pushes to git@github.com:me/my_app.git land in a local bare repo through insteadOf.
+  describe "creating the GitHub repo" do
+    let(:github_remote_bare) { workdir.join("github_me_my_app.git") }
+
+    def remote_next = capture_git("--git-dir", github_remote_bare.to_s, "rev-parse", "--verify", "-q", "next", dir: workdir)
+
+    before do
+      git("branch", "-m", "main", "next")
+      system(ForkFlow::CLEAN_GIT_ENV, "git", "init", "--bare", "-q", github_remote_bare.to_s) || raise("bare init failed")
+      git("config", "url.#{github_remote_bare}.insteadOf", "git@github.com:me/my_app.git")
+    end
+
+    it "creates a public repo named after the project, then pushes next to it" do
+      install_fake_gh
+
+      with_fake_gh { run_fork(name: "my_app", github: "me", yes: true) }
+
+      expect(gh_calls).to include("repo create me/my_app --public")
+      expect(remote_next).to eq(capture_git("rev-parse", "HEAD"))
+      expect(capture_git("config", "--get", "remote.origin.url")).to eq("git@github.com:me/my_app.git")
+    end
+
+    it "never creates a repo under --yes without --github" do
+      install_fake_gh
+
+      with_fake_gh { run_fork(name: "my_app", yes: true) }
+
+      expect(gh_calls.grep(/repo create/)).to be_empty
+    end
+
+    it "takes --github OWNER/NAME as the repo name" do
+      install_fake_gh
+      git("config", "url.#{github_remote_bare}.insteadOf", "git@github.com:org/other.git")
+
+      with_fake_gh { run_fork(name: "my_app", github: "org/other", yes: true) }
+
+      expect(gh_calls).to include("repo create org/other --public")
+    end
+
+    it "uses https when gh is set to https" do
+      install_fake_gh("config get git_protocol" => "echo https")
+      git("config", "url.#{github_remote_bare}.insteadOf", "https://github.com/me/my_app.git")
+
+      with_fake_gh { run_fork(name: "my_app", github: "me", yes: true) }
+
+      expect(capture_git("config", "--get", "remote.origin.url")).to eq("https://github.com/me/my_app.git")
+      expect(remote_next).to eq(capture_git("rev-parse", "HEAD"))
+    end
+
+    it "creates nothing and pushes nothing when gh repo create fails" do
+      install_fake_gh("repo create*" => "echo 'name already exists on this account' >&2; exit 1")
+
+      expect { with_fake_gh { run_fork(name: "my_app", github: "me", yes: true) } }
+        .to raise_error(SystemExit).and output(/--origin .* --github/).to_stderr
+      expect(system(ForkFlow::CLEAN_GIT_ENV, "git", "-C", repo.to_s, "remote", "get-url", "origin", err: File::NULL)).to be(false)
+      expect(remote_next).to be_empty
+    end
+
+    it "refuses to push from a branch other than next" do
+      install_fake_gh
+      git("branch", "-m", "next", "wip")
+
+      expect { with_fake_gh { run_fork(name: "my_app", github: "me", yes: true) } }.to raise_error(SystemExit)
+      expect(gh_calls.grep(/repo create/)).to be_empty
+    end
+
+    it "warns about the free plan and creates the private repo without rules under --yes" do
+      install_fake_gh("api user --jq .plan.name" => "echo free")
+
+      flow = with_fake_gh { run_fork(name: "my_app", github: "me", visibility: "private", yes: true) }
+
+      expect(gh_calls).to include("repo create me/my_app --private")
+      expect(flow.todos.join).to include("free plan").and include("bin/branch-rules")
+    end
+
+    it "goes on when the plan can't be read" do
+      install_fake_gh("api user --jq .plan.name" => "exit 1")
+
+      with_fake_gh { run_fork(name: "my_app", github: "me", visibility: "private", yes: true) }
+
+      expect(gh_calls).to include("repo create me/my_app --private")
+    end
+
+    it "skips GitHub and prints the manual steps when gh is missing" do
+      git_binary = ENV["PATH"].split(":").map { |dir| File.join(dir, "git") }.find { |path| File.executable?(path) }
+      bin_dir.mkpath
+      bin_dir.join("git").make_symlink(git_binary)
+
+      flow = with_path(bin_dir.to_s) { run_fork(name: "my_app", github: "me", yes: true) }
+
+      push = flow.todos.index { |t| t.include?("git push -u origin next") }
+      rules = flow.todos.index { |t| t.include?("bin/branch-rules") }
+      expect(push).not_to be_nil
+      expect(rules).to be > push
+    end
+
+    it "asks before creating when interactive, defaulting to yes" do
+      install_fake_gh
+
+      with_fake_gh do
+        run_fork(name: "my_app") do |flow|
+          allow(flow).to receive(:interactive?).and_return(true)
+          allow(flow).to receive(:ask) { |_question, default| default }
+          allow(flow).to receive(:offer_setup!).and_return(false)
+        end
+      end
+
+      expect(gh_calls).to include("repo create me/my_app --public")
     end
   end
 
