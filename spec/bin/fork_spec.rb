@@ -430,11 +430,10 @@ RSpec.describe ForkFlow do
       expect(config["template_baseline"]).to match(/\A[0-9a-f]{40}\z/)
     end
 
-    it "tags the commit it forked from, because the template's main may be behind it" do
-      baseline = capture_git("rev-parse", "HEAD")
+    it "doesn't ask a fork developer to tag the template" do
       flow = run_fork(name: "my_app", preset: "none", yes: true)
 
-      expect(flow.instance_variable_get(:@todos).join).to include("git tag forks/my_app-baseline #{baseline} ")
+      expect(flow.todos.join).not_to include("forks/")
     end
 
     it "doesn't assume main is the branch that reaches GitHub" do
@@ -612,6 +611,14 @@ RSpec.describe ForkFlow do
       expect(capture_git("remote")).not_to include("upstream")
     end
 
+    it "suggests leaving the fork network when the template came from origin's GitHub parent" do
+      install_parent_gh
+
+      flow = with_path(bin_dir.to_s, ENV["PATH"]) { run_fork(name: "my_app", yes: true) }
+
+      expect(flow.todos.join).to include("Leave fork network")
+    end
+
     it "prefers an explicit --template over GitHub's answer" do
       install_parent_gh
 
@@ -767,6 +774,26 @@ RSpec.describe ForkFlow do
 
       expect(gh_calls).to include("repo create me/my_app --public")
     end
+
+    it "offers the GitHub step when a forked repo has no origin" do
+      install_fake_gh
+      with_fake_gh { run_fork(name: "my_app", yes: true) }
+
+      with_fake_gh { run_fork(github: "me", yes: true) }
+
+      expect(gh_calls).to include("repo create me/my_app --public")
+      expect(remote_next).to eq(capture_git("rev-parse", "HEAD"))
+    end
+
+    it "prints the GitHub steps under --dry-run without running them" do
+      install_fake_gh
+      flow = nil
+
+      with_fake_gh { flow = run_fork(name: "my_app", github: "me", dry_run: true, yes: true) }
+
+      expect(gh_calls.grep(/repo create/)).to be_empty
+      expect(flow).to have_received(:puts).with(%r{would: create the GitHub repo me/my_app \(public\)})
+    end
   end
 
   describe "protecting the branches" do
@@ -858,6 +885,16 @@ RSpec.describe ForkFlow do
       run_fork(yes: true)
 
       expect(capture_git("rev-parse", "HEAD")).to eq(before_head)
+    end
+
+    it "sets a real support address on a forked repo still carrying the placeholder" do
+      run_fork(name: "my_app", yes: true)
+
+      run_fork(support_email: "help@my-app.com", yes: true)
+
+      expect(capture_git("log", "-1", "--format=%s")).to eq("Set the support address")
+      expect(capture_git("show", "--name-only", "--format=", "HEAD")).to eq("config/locales/en/pages.en.yml")
+      expect(capture_git("show", "HEAD:config/locales/en/pages.en.yml")).to include("help@my-app.com")
     end
 
     # The script's headline claim. config/application.rb is the first file

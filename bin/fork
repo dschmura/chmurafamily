@@ -24,6 +24,7 @@
 require "optparse"
 require "yaml"
 require_relative "../lib/clean_git_env"
+require_relative "../lib/github_origin"
 
 class ForkFlow
   VERSION = "1.0.0"
@@ -144,7 +145,7 @@ class ForkFlow
     if forked?
       return update_preset! if @opts[:preset]
 
-      return report_already_forked!
+      return resume_forked!
     end
 
     collect_answers!
@@ -386,6 +387,10 @@ class ForkFlow
     elsif (@template_url ||= (github_parent(origin_url) unless @opts[:origin]))
       how = @opts[:template] ? "--template" : "origin's GitHub parent"
       say("  ✓ template #{@template_url} (#{how}) — bin/setup adds it as the push-disabled upstream remote")
+      unless @opts[:template]
+        @todos << "On GitHub: Settings → General → Leave fork network, so PRs default to your repo, " \
+                  "not the template (bin/sync keeps working: it reads .fork.yml)."
+      end
     else
       say("  ! no template remote found to convert — verify by hand:")
       say("    git remote -v   # upstream fetch = the template, upstream push = DISABLED")
@@ -400,9 +405,6 @@ class ForkFlow
     end
     @origin_present = origin_present || !@opts[:origin].nil?
     point_gh_at_origin! if @origin_present
-
-    @todos << "Record the cut point, in your TEMPLATE checkout:\n" \
-              "     git tag forks/#{snake}-baseline #{@baseline_sha} && git push origin forks/#{snake}-baseline"
   end
 
   # gh otherwise prefers the remote named upstream: the template.
@@ -547,6 +549,42 @@ class ForkFlow
     print_summary!
   end
 
+  # A forked repo can still lack a real support address, an origin, or branch rules.
+  def resume_forked!
+    report_already_forked!
+    @snake = fork_config["name"]
+    set_support_address_on_fork!
+    _, status = capture("git", "-C", @root, "remote", "get-url", "origin")
+    @origin_present = status.zero?
+    return unless @opts[:github] || interactive?
+    return if @origin_present && branch_rules_present?
+
+    step_branch_rules! if step_github!
+    print_summary!
+  end
+
+  def set_support_address_on_fork!
+    path = "config/locales/en/pages.en.yml"
+    content = File.read(path_to(path))
+    placeholder = content[PLACEHOLDER_EMAIL]
+    return unless placeholder && (address = collect_support_email)
+
+    act(%(#{path}: "#{placeholder}" → "#{address}"))
+    return if dry_run?
+
+    atomic_write(path_to(path), content.gsub(placeholder, address))
+    commit!("Set the support address", path)
+  end
+
+  # Unknown (no gh, no GitHub origin) counts as present: nothing here can fix it.
+  def branch_rules_present?
+    repo = GithubOrigin.repo(@root) or return true
+    count, status = capture("gh", "api", "repos/#{repo}/rulesets", "--jq", "length")
+    !status.zero? || count != "0"
+  rescue Errno::ENOENT
+    true
+  end
+
   def report_already_forked!
     say("== #{fork_config['product_name'] || 'This repo'} is already forked ==")
     say("  Nothing renamed — the identity rename is committed (#{FORK_FILE} records it).")
@@ -556,7 +594,10 @@ class ForkFlow
 
   # True once origin holds this checkout's next; branch rules wait for that.
   def step_github!
+    return github_dry_run if dry_run? && @opts[:github]
     return github_by_hand if dry_run? || @opts[:github] == false
+    return github_by_hand unless @opts[:github] || interactive?
+
     if @origin_present
       return github_by_hand unless push_to_origin?
 
@@ -578,6 +619,15 @@ class ForkFlow
     @origin_present = true
     point_gh_at_origin!
     push_next
+  end
+
+  def github_dry_run
+    target = @opts[:github].is_a?(String) ? @opts[:github] : "YOU/#{snake}"
+    target = "#{target}/#{snake}" unless target.include?("/")
+    act("create the GitHub repo #{target} (#{@opts[:visibility] || 'public'})") unless @origin_present
+    act("git push -u origin next")
+    act("bin/branch-rules#{' --solo' unless @opts[:team]}")
+    false
   end
 
   def github_by_hand(gh_missing: false)
