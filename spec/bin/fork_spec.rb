@@ -655,7 +655,7 @@ RSpec.describe ForkFlow do
   end
 
   # Pushes to git@github.com:me/my_app.git land in a local bare repo through insteadOf.
-  describe "creating the GitHub repo" do
+  shared_context "a GitHub remote" do
     let(:github_remote_bare) { workdir.join("github_me_my_app.git") }
 
     def remote_next = capture_git("--git-dir", github_remote_bare.to_s, "rev-parse", "--verify", "-q", "next", dir: workdir)
@@ -665,6 +665,10 @@ RSpec.describe ForkFlow do
       system(ForkFlow::CLEAN_GIT_ENV, "git", "init", "--bare", "-q", github_remote_bare.to_s) || raise("bare init failed")
       git("config", "url.#{github_remote_bare}.insteadOf", "git@github.com:me/my_app.git")
     end
+  end
+
+  describe "creating the GitHub repo" do
+    include_context "a GitHub remote"
 
     it "creates a public repo named after the project, then pushes next to it" do
       install_fake_gh
@@ -762,6 +766,85 @@ RSpec.describe ForkFlow do
       end
 
       expect(gh_calls).to include("repo create me/my_app --public")
+    end
+  end
+
+  describe "protecting the branches" do
+    include_context "a GitHub remote"
+    let(:rules_log) { workdir.join("rules.log") }
+
+    def rules_lines = rules_log.exist? ? rules_log.readlines(chomp: true) : []
+    def rules_calls = rules_lines.grep_v(%r{refs/heads/next})
+
+    around do |example|
+      ENV["FAKE_RULES_LOG"] = rules_log.to_s
+      example.run
+    ensure
+      ENV.delete("FAKE_RULES_LOG")
+    end
+
+    # Committed, so the clean-tree preflight still passes; it records what GitHub held when it ran.
+    before do
+      rules = repo.join("bin/branch-rules")
+      rules.dirname.mkpath
+      rules.write("#!/bin/sh\necho \"$*\" >> \"$FAKE_RULES_LOG\"\ngit ls-remote origin refs/heads/next >> \"$FAKE_RULES_LOG\"\n")
+      rules.chmod(0o755)
+      git("add", "bin/branch-rules")
+      git("commit", "-qm", "branch rules")
+    end
+
+    it "applies solo rules after the push" do
+      install_fake_gh
+
+      with_fake_gh { run_fork(name: "my_app", github: "me", yes: true) }
+
+      expect(rules_calls).to eq([ "--solo" ])
+      expect(rules_lines.grep(%r{refs/heads/next}).join).to include(capture_git("rev-parse", "HEAD"))
+    end
+
+    it "applies team rules with --team" do
+      install_fake_gh
+
+      with_fake_gh { run_fork(name: "my_app", github: "me", team: true, yes: true) }
+
+      expect(rules_calls).to eq([ "" ])
+    end
+
+    it "pushes next to an existing origin and then protects it, when asked to with --github" do
+      install_fake_gh("*repos/me/my_app*" => %(echo "git@github.com:org/modelrails_base_wads.git"))
+      git("remote", "set-url", "origin", "git@github.com:me/my_app.git")
+
+      with_fake_gh { run_fork(name: "my_app", github: true, yes: true) }
+
+      expect(remote_next).to eq(capture_git("rev-parse", "HEAD"))
+      expect(rules_calls).to eq([ "--solo" ])
+      expect(gh_calls.grep(/repo create/)).to be_empty
+    end
+
+    it "leaves an existing origin alone under --yes without --github" do
+      install_fake_gh
+      git("remote", "set-url", "origin", "git@github.com:me/my_app.git")
+
+      flow = with_fake_gh { run_fork(name: "my_app", yes: true) }
+
+      expect(remote_next).to be_empty
+      expect(rules_calls).to be_empty
+      push = flow.todos.index { |t| t.include?("git push -u origin next") }
+      expect(flow.todos.index { |t| t.include?("bin/branch-rules") }).to be > push
+    end
+
+    it "applies no rules when the push is rejected" do
+      install_fake_gh
+      empty_tree = capture_git("hash-object", "-t", "tree", "/dev/null")
+      stray = capture_git("commit-tree", empty_tree, "-m", "someone else's next")
+      git("push", "-q", github_remote_bare.to_s, "#{stray}:refs/heads/next")
+      git("remote", "set-url", "origin", "git@github.com:me/my_app.git")
+
+      flow = with_fake_gh { run_fork(name: "my_app", github: true, yes: true) }
+
+      expect(rules_calls).to be_empty
+      push = flow.todos.index { |t| t.include?("git push -u origin next") }
+      expect(flow.todos.index { |t| t.include?("bin/branch-rules") }).to be > push
     end
   end
 

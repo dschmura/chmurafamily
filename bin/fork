@@ -152,7 +152,7 @@ class ForkFlow
     step_rename!
     step_preset!(@preset)
     step_verify!
-    step_github!
+    step_branch_rules! if step_github!
     @todos << "Set up outbound mail, which production requires: bin/mail-setup"
     print_summary!
     offer_mail_setup! if offer_setup!
@@ -556,18 +556,20 @@ class ForkFlow
 
   # True once origin holds this checkout's next; branch rules wait for that.
   def step_github!
-    login = github_login unless dry_run? || @origin_present || @opts[:github] == false
-    unless login && create_github_repo?
-      say("\n  ! gh isn't installed or signed in, so the GitHub steps are listed by hand.") if @opts[:github] && !login && !dry_run?
-      manual_github_todos!
-      return false
+    return github_by_hand if dry_run? || @opts[:github] == false
+    if @origin_present
+      return github_by_hand unless push_to_origin?
+
+      say("\n== GitHub ==")
+      require_next_branch!
+      return push_next
     end
 
+    login = github_login
+    return github_by_hand(gh_missing: @opts[:github] && !login) unless login && create_github_repo?
+
     say("\n== GitHub ==")
-    unless current_branch == "next"
-      abort("bin/fork: the GitHub step pushes next, but this checkout is on #{current_branch}. " \
-            "Run git switch next, then rerun bin/fork.")
-    end
+    require_next_branch!
     owner, name = github_target(login)
     visibility = github_visibility(owner, login)
     url = github_url(owner, name)
@@ -576,6 +578,45 @@ class ForkFlow
     @origin_present = true
     point_gh_at_origin!
     push_next
+  end
+
+  def github_by_hand(gh_missing: false)
+    say("\n  ! gh isn't installed or signed in, so the GitHub steps are listed by hand.") if gh_missing
+    manual_github_todos!
+    false
+  end
+
+  def push_to_origin?
+    return true if @opts[:github]
+
+    interactive? && ask("\nPush next to origin and protect it? (Y/n)", "Y").match?(/\A[Yy]/)
+  end
+
+  def require_next_branch!
+    return if current_branch == "next"
+
+    abort("bin/fork: the GitHub step pushes next, but this checkout is on #{current_branch}. " \
+          "Run git switch next, then rerun bin/fork.")
+  end
+
+  def step_branch_rules!
+    return if @rules_blocked || !remote_next_matches?
+
+    team = @opts[:team] || (interactive? && ask("Does a second person approve PRs? (y/N)", "N").match?(/\A[Yy]/))
+    args = team ? [] : [ "--solo" ]
+    say("\n== Branch rules ==\n  $ #{[ 'bin/branch-rules', *args ].join(' ')}")
+    if system(CLEAN_GIT_ENV, "bin/branch-rules", *args, chdir: @root)
+      say(team ? "  Rules need one approval per PR; bin/branch-rules --solo removes it." :
+                 "  Rules are solo. A second approver later: bin/branch-rules (without --solo).")
+    else
+      @todos << "Protect the branches: #{[ 'bin/branch-rules', *args ].join(' ')}"
+    end
+  end
+
+  def remote_next_matches?
+    remote, status = capture("git", "-C", @root, "ls-remote", "origin", "refs/heads/next")
+    head, = capture("git", "-C", @root, "rev-parse", "HEAD")
+    status.zero? && remote.split.first == head
   end
 
   def github_login
