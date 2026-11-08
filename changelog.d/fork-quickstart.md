@@ -1,0 +1,1 @@
+- A Fork to Served page lists every step from cloning the template to a deployed app you can sign in to, each with its check.
