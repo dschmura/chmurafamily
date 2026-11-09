@@ -46,7 +46,7 @@ RSpec.describe "Workspace Invitations", type: :request do
           }
         }.to change(Invitation, :count).by(1)
 
-        expect(workspace.invitations.find_by(email: nil)).to be_magic_link
+        expect(workspace.invitations.find_by(email: nil)).to be_magic_link.and be_acceptable
         expect(response).to redirect_to(workspace_members_path(workspace))
         expect(flash[:notice]).to eq(I18n.t("workspaces.invitations.create.magic_link_created"))
       end
