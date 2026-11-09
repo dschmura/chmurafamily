@@ -29,8 +29,7 @@ class Invitation < ApplicationRecord
           invitable: project,
           email: email,
           company_name: company_name,
-          invited_by: invited_by,
-          expires_at: 7.days.from_now
+          invited_by: invited_by
         )
         InvitationMailer.with(invitation: invitation).invite_client.deliver_later
         invitation
@@ -77,7 +76,6 @@ class Invitation < ApplicationRecord
               email: normalized,
               role: role,
               invited_by: invited_by,
-              expires_at: 7.days.from_now,
               suppressed_at: (Time.current if blocked.include?(normalized))
             )
           rescue ActiveRecord::RecordNotUnique

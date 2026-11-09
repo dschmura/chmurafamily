@@ -231,6 +231,7 @@ RSpec.describe Project, type: :model do
       visible = create(:resource, project: project, status: "published", shared_with_client: true)
       create(:resource, project: project, status: "draft", shared_with_client: true)
       create(:resource, project: project, status: "published", shared_with_client: false)
+      create(:resource, project: project, status: "published", shared_with_client: true).discard!
       expect(project.client_visible_resources).to eq([ visible ])
     end
   end

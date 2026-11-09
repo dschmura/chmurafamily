@@ -13,8 +13,8 @@ module Clientside
       private
 
       def set_resource
-        @resource = @project.resources.kept.find_by(id: params[:id])
-        return if @resource&.client_visible?
+        @resource = @project.client_visible_resources.find_by(id: params[:id])
+        return if @resource
         redirect_to clientside_project_path(@project), alert: t("clientside.area.resource_unavailable")
       end
     end
