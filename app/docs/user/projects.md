@@ -152,7 +152,7 @@ Each accepted invitation creates a `ClientAccess` record linking the external `U
 
 **What clients can see:**
 
-Clients access the project through the separate `Clientside::` controller namespace. They can only see resources where `Resource#client_visible?` returns true — i.e. the resource is both `published` and `shared_with_client` (`resources.shared_with_client` column). The project's `client_visible_resources` helper returns this filtered, positioned set.
+Clients access the project through the separate `Clientside::` controller namespace. They can only see resources the project's `client_visible_resources` returns: not deleted, `published` and `shared_with_client` (`resources.shared_with_client` column), in position order.
 
 See [Clientside](/docs/user/clientside) for the full reference.
 
