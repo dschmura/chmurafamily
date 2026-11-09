@@ -18,8 +18,7 @@ module Workspaces
           email: invitation_params[:email],
           role: viewer_role,
           project_role: invitation_params[:project_role] || "editor",
-          invited_by: Current.user,
-          expires_at: 7.days.from_now
+          invited_by: Current.user
         )
 
         if Invitation.already_invited?(invitable: @project, email: invitation_params[:email],

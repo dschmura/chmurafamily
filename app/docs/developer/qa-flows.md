@@ -103,7 +103,7 @@ Or run `bin/rails db:seed` if you configured the shared-preset seed variables.
 ### Edge cases — Invitations
 
 - **Single-use.** After a successful claim, clicking the same accept link again shows an "expired or used" alert and redirects to `root_path`.
-- **Expired invitation.** Invitations expire after **7 days** (set at creation: `expires_at: 7.days.from_now`). Attempting to accept an expired invitation shows the same "expired or used" alert.
+- **Expired invitation.** Invitations expire after **7 days** (`Invitation::LIFETIME`, set at creation). Attempting to accept an expired invitation shows the same "expired or used" alert.
 - **Email-bound.** An invitation addressed to `alice@example.com` cannot be claimed by a signed-in user whose email is `bob@example.com` — `Invitation::EmailMismatch` is raised and the flow aborts with an alert.
 - **Race (already consumed).** If two requests attempt to accept the same invitation simultaneously, `Invitation#accept!` acquires a lock; the loser raises `NotAcceptable`.
 
