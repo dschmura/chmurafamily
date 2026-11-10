@@ -151,6 +151,30 @@ class ForkFlow
     end
   end
 
+  class Console
+    def initialize(input:, output:, dry_run:, yes:)
+      @input = input
+      @output = output
+      @dry_run = dry_run
+      @yes = yes
+    end
+
+    def say(msg)  = @output.puts(msg)
+    def act(msg)  = @output.puts("#{@dry_run ? '[dry-run] would: ' : '  → '}#{msg}")
+    def skip(msg) = @output.puts("  ✓ #{msg} (already done)")
+
+    def prompts? = !@yes && @input.tty?
+    def interactive? = !@dry_run && prompts?
+
+    def ask(question, default)
+      return default unless prompts?
+
+      @output.print "#{question} [#{default}]: "
+      answer = @input.gets.to_s.strip
+      answer.empty? ? default : answer
+    end
+  end
+
   attr_reader :todos
 
   def self.placeholder_email?(address) = !address.include?("@") || address.match?(PLACEHOLDER_EMAIL)
@@ -159,8 +183,7 @@ class ForkFlow
     @opts = options
     @root = File.expand_path(root)
     @todos = []
-    @input = input
-    @output = output
+    @console = Console.new(input:, output:, dry_run: options[:dry_run], yes: options[:yes])
     @shell = shell || Shell.new(root: @root, dry_run: options[:dry_run], output:)
   end
 
@@ -305,7 +328,7 @@ class ForkFlow
 
   def collect_answers!
     @snake = normalize_name(@opts[:name] || ask("Project name?", File.basename(@root)))
-    @preset = @opts[:preset] || (ask_preset unless @opts[:yes] || !@input.tty?)
+    @preset = @opts[:preset] || (ask_preset if @console.prompts?)
     validate_preset!(@preset) if @preset
     @support_email = collect_support_email
     check_github_flags!
@@ -893,7 +916,7 @@ class ForkFlow
     say("    Run bin/mail-setup when ready; development mail keeps working locally.")
   end
 
-  def interactive? = !dry_run? && !@opts[:yes] && @input.tty?
+  def interactive? = @console.interactive?
 
   def print_summary!
     return if @todos.empty?
@@ -911,20 +934,13 @@ class ForkFlow
   def dry_run? = @opts[:dry_run]
   def path_to(relative) = File.join(@root, relative)
 
-  def say(msg)  = @output.puts(msg)
-  def act(msg)  = @output.puts("#{dry_run? ? '[dry-run] would: ' : '  → '}#{msg}")
-  def skip(msg) = @output.puts("  ✓ #{msg} (already done)")
+  def say(msg)  = @console.say(msg)
+  def act(msg)  = @console.act(msg)
+  def skip(msg) = @console.skip(msg)
+  def ask(question, default) = @console.ask(question, default)
 
   def sh(*cmd) = @shell.run!(*cmd)
   def capture(*cmd) = @shell.capture(*cmd)
-
-  def ask(question, default)
-    return default if @opts[:yes] || !@input.tty?
-
-    @output.print "#{question} [#{default}]: "
-    answer = @input.gets.to_s.strip
-    answer.empty? ? default : answer
-  end
 
   # Pathspec-limited so a developer's unrelated staged work never lands in the
   # identity commit — "one clean commit you can always find again" has to mean it.
