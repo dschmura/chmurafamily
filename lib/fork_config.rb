@@ -16,7 +16,8 @@ class ForkConfig
 
   def self.read(root)
     path = File.join(root, FILE)
-    new(File.exist?(path) ? YAML.safe_load_file(path) || {} : {})
+    data = YAML.safe_load_file(path) if File.exist?(path)
+    new(data.is_a?(Hash) ? data : {})
   end
 
   def initialize(data)

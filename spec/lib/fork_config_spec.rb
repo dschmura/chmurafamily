@@ -20,6 +20,13 @@ RSpec.describe ForkConfig do
     expect(described_class.read(@root)).to be_recorded
   end
 
+  it "has recorded nothing when .fork.yml holds no mapping" do
+    record("just a sentence\n")
+
+    expect(described_class.read(@root)).not_to be_recorded
+    expect(described_class.read(@root).preset).to be_nil
+  end
+
   it "reads the decisions bin/fork wrote" do
     record("name: my_app\nproduct_name: My App\npreset: none\ntemplate_url: git@github.com:someone/modelrails_base.git\n")
     config = described_class.read(@root)
