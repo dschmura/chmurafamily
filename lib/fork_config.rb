@@ -24,14 +24,17 @@ class ForkConfig
   end
 
   def recorded? = @data.any?
+  def to_h = @data.dup
   def preset = @data["preset"]
   def name = @data["name"]
+  def product_name = @data["product_name"]
   def template_url = @data["template_url"]
 
   def tenancy_defaults
     return {} unless preset
 
     defaults = { "WORKSPACE_ON_SIGNUP" => preset }
+    # config/initializers/tenancy.rb refuses to boot the shared preset without a slug.
     defaults["TENANCY_SHARED_WORKSPACE_SLUG"] = name if preset == "shared"
     defaults
   end

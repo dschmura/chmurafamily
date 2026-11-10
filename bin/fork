@@ -25,6 +25,7 @@ require "optparse"
 require "yaml"
 require_relative "../lib/clean_git_env"
 require_relative "../lib/github_origin"
+require_relative "../lib/fork_config"
 
 class ForkFlow
   VERSION = "1.0.0"
@@ -32,7 +33,7 @@ class ForkFlow
   TEMPLATE_TOKEN  = "modelrails_base"
   TEMPLATE_MODULE = "ModelrailsBase"
   TEMPLATE_BRAND  = "ModelRails"
-  FORK_FILE       = ".fork.yml"
+  FORK_FILE       = ForkConfig::FILE
   CHANGELOG       = "CHANGELOG.md"
 
   # Anchored on a path separator so a fork of your own named e.g.
@@ -85,7 +86,7 @@ class ForkFlow
   # Kept in step with config/initializers/tenancy.rb, which raises at boot on
   # anything else (pinned by a template invariant). Open SaaS is documented but
   # not implemented — offering it here would write a .env the app won't boot on.
-  PRESETS = %w[personal shared none].freeze
+  PRESETS = ForkConfig::PRESETS
 
   # Object.const_defined? catches Ruby core (always loaded), but this script is
   # stdlib-only by design — Rails and friends are NOT defined in its process, so
@@ -759,11 +760,7 @@ class ForkFlow
       return
     end
 
-    env = { "WORKSPACE_ON_SIGNUP" => preset }
-    # config/initializers/tenancy.rb raises at boot when :shared has no slug, so
-    # writing the preset alone would hand back a .env the app refuses to start on.
-    env["TENANCY_SHARED_WORKSPACE_SLUG"] = snake_for_slug if preset == "shared"
-    write_env(env)
+    write_env(ForkConfig.new("preset" => preset, "name" => snake_for_slug).tenancy_defaults)
 
     say(<<~NOTE)
 
@@ -780,26 +777,26 @@ class ForkFlow
     NOTE
   end
 
-  def snake_for_slug = @snake || fork_config["name"] || "main"
+  def snake_for_slug = @snake || fork_config.name || "main"
 
   # Recording a preset change on an already-forked repo.
   def update_preset!
     preset = @opts[:preset]
     validate_preset!(preset)
 
-    if fork_config["preset"] == preset
+    if fork_config.preset == preset
       skip("preset already recorded as #{preset}")
       return step_preset!(preset)
     end
 
     say("== Recording tenancy preset: #{preset} ==")
-    if fork_config["preset"]
-      say("  ! changing preset #{fork_config['preset']} → #{preset}. On a LIVE app this is")
+    if fork_config.preset
+      say("  ! changing preset #{fork_config.preset} → #{preset}. On a LIVE app this is")
       say("    a migration, not a config flip (/docs/developer/presets) — existing data")
       say("    keeps its old shape. Fine before launch; deliberate afterwards.")
     end
 
-    write_fork_file(fork_config.merge("preset" => preset))
+    write_fork_file(fork_config.to_h.merge("preset" => preset))
     commit!("Record tenancy preset: #{preset}", FORK_FILE)
     step_preset!(preset)
     print_summary!
@@ -808,7 +805,7 @@ class ForkFlow
   # A forked repo can still lack a real support address, an origin, or branch rules.
   def resume_forked!
     report_already_forked!
-    @snake = fork_config["name"]
+    @snake = fork_config.name
     check_github_flags!
     set_support_address_on_fork!
     _, status = capture("git", "-C", @root, "remote", "get-url", "origin")
@@ -842,7 +839,7 @@ class ForkFlow
   end
 
   def report_already_forked!
-    say("== #{fork_config['product_name'] || 'This repo'} is already forked ==")
+    say("== #{fork_config.product_name || 'This repo'} is already forked ==")
     say("  Nothing renamed — the identity rename is committed (#{FORK_FILE} records it).")
     say("  Per-clone setup (upstream remote, merge driver, .env preset) is bin/setup.")
     say("\nNext: bin/setup")
@@ -990,10 +987,7 @@ class ForkFlow
   # .fork.yml is committed and hand-editable, so it will be hand-edited. A raw
   # Psych backtrace names neither the file nor the fix.
   def fork_config
-    return @fork_config if @fork_config
-    return @fork_config = {} unless File.exist?(path_to(FORK_FILE))
-
-    @fork_config = YAML.safe_load_file(path_to(FORK_FILE)) || {}
+    @fork_config ||= ForkConfig.read(@root)
   rescue Psych::Exception => e
     abort("bin/fork: #{FORK_FILE} is not valid YAML (#{e.message.lines.first.to_s.strip}). " \
           "Fix it by hand, or delete it and re-run — nothing gates on it.")

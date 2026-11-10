@@ -81,6 +81,15 @@ RSpec.describe "bin/setup" do
     expect(output).to include('unknown preset "solo"')
   end
 
+  it "names the file when .fork.yml isn't valid YAML" do
+    clone_with("name: [unclosed\n")
+
+    output, status = run_setup
+
+    expect(status).not_to be_success
+    expect(output).to include("bin/setup: .fork.yml is not valid YAML")
+  end
+
   it "installs the git hooks and prepares the database in any clone" do
     clone_with(nil)
 

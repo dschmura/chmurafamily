@@ -1430,6 +1430,16 @@ RSpec.describe ForkFlow do
     end
   end
 
+  describe "a hand-edited .fork.yml" do
+    it "names the file and the fix when it isn't valid YAML" do
+      run_fork(name: "my_app", yes: true)
+      repo.join(".fork.yml").write("name: [unclosed\n")
+      git("commit", "-qam", "break it")
+
+      expect { run_fork(yes: true) }.to raise_error(SystemExit).and output(/\.fork\.yml is not valid YAML.*Fix it by hand/m).to_stderr
+    end
+  end
+
   describe "provenance" do
     # .fork.yml is committed and hand-editable, so it will be hand-edited.
     it "reports a corrupt .fork.yml instead of raising Psych internals" do

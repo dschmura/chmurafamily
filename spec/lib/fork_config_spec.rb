@@ -20,10 +20,13 @@ RSpec.describe ForkConfig do
     expect(described_class.read(@root)).to be_recorded
   end
 
-  it "reads the template a fork came from" do
-    record("name: my_app\ntemplate_url: git@github.com:someone/modelrails_base.git\n")
+  it "reads the decisions bin/fork wrote" do
+    record("name: my_app\nproduct_name: My App\npreset: none\ntemplate_url: git@github.com:someone/modelrails_base.git\n")
+    config = described_class.read(@root)
 
-    expect(described_class.read(@root).template_url).to eq("git@github.com:someone/modelrails_base.git")
+    expect([ config.name, config.product_name, config.preset, config.template_url ])
+      .to eq([ "my_app", "My App", "none", "git@github.com:someone/modelrails_base.git" ])
+    expect(config.to_h).to include("name" => "my_app", "preset" => "none")
   end
 
   it "knows a preset the app would refuse to boot on" do
