@@ -133,10 +133,12 @@ class ForkFlow
 
   def self.placeholder_email?(address) = !address.include?("@") || address.match?(PLACEHOLDER_EMAIL)
 
-  def initialize(options, root: Dir.pwd)
+  def initialize(options, root: Dir.pwd, input: $stdin, output: $stdout)
     @opts = options
     @root = File.expand_path(root)
     @todos = []
+    @input = input
+    @output = output
   end
 
   def run
@@ -280,7 +282,7 @@ class ForkFlow
 
   def collect_answers!
     @snake = normalize_name(@opts[:name] || ask("Project name?", File.basename(@root)))
-    @preset = @opts[:preset] || (ask_preset unless @opts[:yes] || !$stdin.tty?)
+    @preset = @opts[:preset] || (ask_preset unless @opts[:yes] || !@input.tty?)
     validate_preset!(@preset) if @preset
     @support_email = collect_support_email
     check_github_flags!
@@ -868,7 +870,7 @@ class ForkFlow
     say("    Run bin/mail-setup when ready; development mail keeps working locally.")
   end
 
-  def interactive? = !dry_run? && !@opts[:yes] && $stdin.tty?
+  def interactive? = !dry_run? && !@opts[:yes] && @input.tty?
 
   def print_summary!
     return if @todos.empty?
@@ -886,9 +888,9 @@ class ForkFlow
   def dry_run? = @opts[:dry_run]
   def path_to(relative) = File.join(@root, relative)
 
-  def say(msg)  = puts(msg)
-  def act(msg)  = puts("#{dry_run? ? '[dry-run] would: ' : '  → '}#{msg}")
-  def skip(msg) = puts("  ✓ #{msg} (already done)")
+  def say(msg)  = @output.puts(msg)
+  def act(msg)  = @output.puts("#{dry_run? ? '[dry-run] would: ' : '  → '}#{msg}")
+  def skip(msg) = @output.puts("  ✓ #{msg} (already done)")
 
   def sh(*cmd)
     say("  $ #{cmd.reject { |c| c == @root || c == '-C' }.join(' ')}")
@@ -903,10 +905,10 @@ class ForkFlow
   end
 
   def ask(question, default)
-    return default if @opts[:yes] || !$stdin.tty?
+    return default if @opts[:yes] || !@input.tty?
 
-    print "#{question} [#{default}]: "
-    answer = $stdin.gets.to_s.strip
+    @output.print "#{question} [#{default}]: "
+    answer = @input.gets.to_s.strip
     answer.empty? ? default : answer
   end
 
