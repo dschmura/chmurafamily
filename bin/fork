@@ -767,9 +767,9 @@ class ForkFlow
 
     say(<<~NOTE)
 
-      NOTE: these live in .env and the production env — do NOT `export` them in
-      your shell. The suite asserts the DEFAULT preset; an exported value leaks
-      into rspec and fails hundreds of specs by design.
+      NOTE: these live in .env for development, and production reads the preset from .fork.yml.
+      Do NOT `export` them in your shell: the suite asserts the DEFAULT preset, and an
+      exported value leaks into rspec and fails hundreds of specs.
     NOTE
 
     return unless preset == "none"
@@ -1020,7 +1020,7 @@ class ForkFlow
     pending = vars.reject { |k, v| env.match?(/^#{Regexp.escape("#{k}=#{v}")}$/) }
     return skip(".env already sets #{vars.keys.join(', ')}") if pending.empty?
 
-    pending.each { |k, v| act("write #{k}=#{v} to .env (gitignored; set the same var in the production env at deploy time)") }
+    pending.each { |k, v| act("write #{k}=#{v} to .env (gitignored, for development)") }
     return if dry_run?
 
     pending.each_key { |k| env = env.gsub(/^#{Regexp.escape(k)}=.*\n?/, "") }

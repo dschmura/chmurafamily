@@ -18,6 +18,8 @@ require "action_cable/engine"
 # you've limited to :test, :development, or :production.
 Bundler.require(*Rails.groups)
 
+require_relative "../lib/fork_config"
+
 module ModelrailsBase
   class Application < Rails::Application
     # Initialize configuration defaults for originally generated Rails version.
@@ -69,8 +71,10 @@ module ModelrailsBase
       ENV.fetch("SIGNUP_PERMITTED_JOIN_STRATEGIES", "invite").split(",").map { |s| s.strip.to_sym }
 
     # Tenancy preset configuration. See app/docs/developer/presets.md.
-    config.x.tenancy.onboarding          = ENV.fetch("WORKSPACE_ON_SIGNUP", "personal").to_sym
+    # A fork's preset defaults to the one bin/fork recorded in .fork.yml.
+    tenancy = ForkConfig.tenancy_env(config.root, env: ENV, test: Rails.env.test?)
+    config.x.tenancy.onboarding          = tenancy.fetch("WORKSPACE_ON_SIGNUP", "personal").to_sym
     config.x.tenancy.workspace_creation  = ENV.fetch("TENANCY_WORKSPACE_CREATION", "enabled").to_sym
-    config.x.tenancy.shared_workspace_slug = ENV["TENANCY_SHARED_WORKSPACE_SLUG"]
+    config.x.tenancy.shared_workspace_slug = tenancy["TENANCY_SHARED_WORKSPACE_SLUG"]
   end
 end

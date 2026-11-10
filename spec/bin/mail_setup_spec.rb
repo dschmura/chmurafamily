@@ -984,7 +984,7 @@ RSpec.describe MailSetup do
       {
         provider: "Postmark", address: "smtp.postmarkapp.com", port: "587", sender: "hello@example.org",
         changed_files: %w[config/credentials/production.yml.enc config/deploy.yml .gitignore], first_run: true,
-        deploy_written: true, signup_mode: nil, preset: nil, preset_in_deploy: false, rails_host: nil,
+        deploy_written: true, signup_mode: nil, preset: nil, rails_host: nil,
         master_key_set: false, app_name: "my_app", warnings: []
       }
     end
@@ -1040,7 +1040,7 @@ RSpec.describe MailSetup do
     end
 
     it "uses the seeded owner on the shared preset" do
-      message = text(preset: "shared", preset_in_deploy: true)
+      message = text(preset: "shared")
 
       expect(message).to include("TENANCY_OWNER_EMAIL")
       expect(message).not_to include("User.create!")
@@ -1059,12 +1059,8 @@ RSpec.describe MailSetup do
       expect(message.index("unset RAILS_MASTER_KEY")).to be < message.index("Do this now")
     end
 
-    it "warns when the preset isn't set in deploy.yml, naming shared's slug" do
-      expect(text(preset: "shared")).to include("WORKSPACE_ON_SIGNUP", "TENANCY_SHARED_WORKSPACE_SLUG")
-      expect(text(preset: "none")).to include("WORKSPACE_ON_SIGNUP")
-      expect(text(preset: "none")).not_to include("TENANCY_SHARED_WORKSPACE_SLUG")
-      expect(text(preset: "personal")).not_to include("WORKSPACE_ON_SIGNUP")
-      expect(text(preset: "shared", preset_in_deploy: true)).not_to include("WORKSPACE_ON_SIGNUP")
+    it "doesn't send a fork to deploy.yml for its preset, which production reads from .fork.yml" do
+      expect(text(preset: "shared")).not_to include("WORKSPACE_ON_SIGNUP", "TENANCY_SHARED_WORKSPACE_SLUG")
     end
 
     it "warns when the sender's domain doesn't fit RAILS_HOST" do
