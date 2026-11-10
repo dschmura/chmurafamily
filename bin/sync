@@ -6,9 +6,9 @@
 
 require "fileutils"
 require "open3"
-require "yaml"
 require_relative "../lib/clean_git_env"
 require_relative "../lib/github_origin"
+require_relative "../lib/fork_config"
 require "release_flow"
 
 class Sync
@@ -91,7 +91,7 @@ class Sync
     raise Error, "no .fork.yml here: bin/sync brings template releases into a fork that bin/fork made" unless File.exist?(fork_file)
     raise Error, "no upstream remote: bin/setup adds it" unless git_ok?("remote", "get-url", "upstream")
 
-    YAML.safe_load_file(fork_file).to_h["template_url"].to_s[GithubOrigin::URL, :repo] or
+    ForkConfig.read(@root).template_url.to_s[GithubOrigin::URL, :repo] or
       raise Error, "template_url in .fork.yml isn't a GitHub repository"
   end
 

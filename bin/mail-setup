@@ -10,6 +10,7 @@ require "rbconfig"
 require "shellwords"
 require "yaml"
 require_relative "../lib/clean_git_env"
+require_relative "../lib/fork_config"
 
 class MailSetup
   # Its message is always a fixed sentence, safe to print.
@@ -553,10 +554,10 @@ class MailSetup
     ClosingMessage.text(
       provider: answers[:provider], address: answers[:address], port: answers[:port],
       sender: answers[:sender] || current_sender, changed_files:, first_run: credentials_never_committed?,
-      deploy_written:, signup_mode: values["SIGNUP_MODE"], preset: fork_config["preset"],
+      deploy_written:, signup_mode: values["SIGNUP_MODE"], preset: fork_config.preset,
       rails_host: values["RAILS_HOST"],
       master_key_set: !@env["RAILS_MASTER_KEY"].to_s.strip.empty?,
-      app_name: fork_config["name"] || File.basename(@root), warnings:
+      app_name: fork_config.name || File.basename(@root), warnings:
     )
   end
 
@@ -576,10 +577,9 @@ class MailSetup
 
   def fork_config
     @fork_config ||= begin
-      parsed = YAML.safe_load_file(path(".fork.yml"))
-      parsed.is_a?(Hash) ? parsed : {}
-    rescue Errno::ENOENT, Psych::Exception
-      {}
+      ForkConfig.read(@root)
+    rescue Psych::Exception
+      ForkConfig.new({})
     end
   end
 
