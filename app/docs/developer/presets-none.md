@@ -117,6 +117,8 @@ WORKSPACE_ON_SIGNUP=none
 ```
 
 That's the only required change. No seed vars are needed (unlike `:shared`).
+`bin/fork --preset none` records it in `.fork.yml`, which production reads, so
+a fork needs to set the variable only to override that choice.
 
 **2. Override `authenticated_home_path` (optional).**
 

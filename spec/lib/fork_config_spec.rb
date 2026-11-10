@@ -1,0 +1,70 @@
+require "rails_helper"
+require "tmpdir"
+
+RSpec.describe ForkConfig do
+  around do |example|
+    Dir.mktmpdir do |dir|
+      @root = Pathname.new(dir)
+      example.run
+    end
+  end
+
+  def record(yaml) = @root.join(".fork.yml").write(yaml)
+  def defaults = described_class.read(@root).tenancy_defaults
+
+  describe "#tenancy_defaults" do
+    it "makes a recorded shared preset the default, with the app's name as its slug" do
+      record("name: my_app\npreset: shared\n")
+
+      expect(defaults).to eq("WORKSPACE_ON_SIGNUP" => "shared", "TENANCY_SHARED_WORKSPACE_SLUG" => "my_app")
+    end
+
+    it "needs no slug for the other presets" do
+      record("name: my_app\npreset: none\n")
+
+      expect(defaults).to eq("WORKSPACE_ON_SIGNUP" => "none")
+    end
+
+    it "has none when the preset was left undecided" do
+      record("name: my_app\n")
+
+      expect(defaults).to be_empty
+    end
+
+    it "has none in the template, which records no fork" do
+      expect(defaults).to be_empty
+    end
+  end
+
+  describe ".tenancy_env" do
+    before { record("name: my_app\npreset: shared\n") }
+
+    it "takes the recorded preset when the environment sets none" do
+      expect(described_class.tenancy_env(@root, env: {}, test: false))
+        .to eq("WORKSPACE_ON_SIGNUP" => "shared", "TENANCY_SHARED_WORKSPACE_SLUG" => "my_app")
+    end
+
+    it "lets the environment override the record" do
+      env = { "WORKSPACE_ON_SIGNUP" => "personal", "PATH" => "/bin" }
+
+      expect(described_class.tenancy_env(@root, env:, test: false))
+        .to eq("WORKSPACE_ON_SIGNUP" => "personal", "TENANCY_SHARED_WORKSPACE_SLUG" => "my_app")
+    end
+
+    # A fork's suite pins the template's default preset; following the record would fail hundreds of specs.
+    it "ignores the record under test" do
+      expect(described_class.tenancy_env(@root, env: {}, test: true)).to be_empty
+    end
+  end
+
+  it "lets .fork.yml into the production image" do
+    patterns = Rails.root.join(".dockerignore").readlines(chomp: true).grep_v(/\A\s*(#|\z)/)
+    excluded = patterns.reduce(false) do |out, pattern|
+      negated = pattern.start_with?("!")
+      matches = File.fnmatch?(pattern.delete_prefix("!").delete_prefix("/"), ".fork.yml", File::FNM_DOTMATCH)
+      matches ? !negated : out
+    end
+
+    expect(excluded).to be(false)
+  end
+end

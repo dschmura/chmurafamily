@@ -340,6 +340,13 @@ RSpec.describe ForkFlow do
       expect(env).to include("WORKSPACE_ON_SIGNUP=shared")
       expect(env).to include("TENANCY_SHARED_WORKSPACE_SLUG=my_app")
     end
+
+    it "says production reads the preset from .fork.yml, not from a variable to set by hand" do
+      run_fork(name: "my_app", preset: "shared", yes: true)
+
+      expect(printed.string).to include("production reads the preset from .fork.yml")
+      expect(printed.string).not_to include("production env")
+    end
   end
 
   describe ".env handling" do

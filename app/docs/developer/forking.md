@@ -283,9 +283,10 @@ wherever the credentials key is backed up, because losing it loses every
 email lookup. Which columns, and why some are deterministic:
 [Security](/docs/developer/security#personal-data-at-rest).
 
-For production you'll also set `RAILS_HOST`, pick a tenancy preset
-(`WORKSPACE_ON_SIGNUP`), and choose a signup mode — see `.env.example`,
-[Presets](presets), and [Deployment](deployment).
+For production you'll also set `RAILS_HOST` and choose a signup mode — see
+`.env.example`, [Presets](presets), and [Deployment](deployment). The tenancy
+preset needs nothing more: production uses the one `bin/fork` recorded in
+`.fork.yml`, and a `WORKSPACE_ON_SIGNUP` set in the environment overrides it.
 
 ## Protect the branches
 
