@@ -1403,6 +1403,13 @@ RSpec.describe ForkFlow do
   end
 
   describe "the mail step in a fresh fork" do
+    it "sends the deploy to Fork to Served in Next steps" do
+      run_fork(name: "my_app", yes: true)
+
+      expect(printed.string).to match(%r{Next steps.*/docs/developer/quickstart}m)
+      expect(printed.string).not_to include("deploy-guide")
+    end
+
     it "lists bin/mail-setup in Next steps, even with --yes" do
       run_fork(name: "my_app", yes: true)
 

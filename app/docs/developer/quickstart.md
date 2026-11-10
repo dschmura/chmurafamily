@@ -9,6 +9,8 @@ keywords: quickstart start new app fork clone serve deploy first deploy producti
 This page puts the whole path in order, from cloning the template to a deployed
 app you can sign in to. Each step names what to run and how to tell it worked,
 and links the guide with the details. Follow it top to bottom the first time.
+To do something differently from a default, see
+[Changing the defaults](changing-the-defaults).
 
 You need [mise](https://mise.jdx.dev/), the [GitHub CLI](https://cli.github.com/)
 signed in (`gh auth login`), and, from step 6, a server and Docker on the
@@ -129,7 +131,8 @@ bin/release ship      # merges it, tags the version, merges main back into next
 
 Until you switch on deploys from CI, deploy `main` from your machine with
 `bin/kamal deploy` after each ship. Staging, automatic releases and CI deploys
-are optional, and each one is a switch you turn on when you want it.
+are optional, and each one is a switch you turn on when you want it:
+[Changing the defaults](changing-the-defaults#how-changes-ship) says where.
 
 **Check:** the release appears under your repo's Releases. Details:
 [Releasing](releasing) and [Deployment: Deploy from CI](deployment#6-deploy-from-ci).

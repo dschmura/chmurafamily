@@ -952,7 +952,7 @@ class ForkFlow
     say("\n== Next steps ==")
     @todos.each_with_index { |todo, i| say("  #{i + 1}. #{todo}") }
     say("  #{@todos.size + 1}. Set up and prove green:  bin/setup --skip-server && bin/parallel-rspec")
-    say("  #{@todos.size + 2}. Deploy later: bin/deploy-guide (or /docs/developer/deployment by hand).")
+    say("  #{@todos.size + 2}. Deploy later: Fork to Served, /docs/developer/quickstart, from step 4.")
   end
 
   private
