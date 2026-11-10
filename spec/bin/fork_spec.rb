@@ -1327,6 +1327,38 @@ RSpec.describe ForkFlow do
     end
   end
 
+  describe ForkFlow::GithubRepo do
+    it "lists the steps by hand, quietly, when told not to publish" do
+      todos = []
+      github = described_class.new(
+        { github: false }, root: repo.to_s, snake: "my_app", branch: "next", origin_present: false, todos:,
+        console: ForkFlow::Console.new(input: StringIO.new, output: printed, dry_run: false, yes: true),
+        shell: ForkFlow::Shell.new(root: repo.to_s, dry_run: false, output: printed)
+      )
+
+      expect(github.publish).to be(false)
+      expect(todos.join).to include("git remote add origin git@github.com:YOU/my_app.git")
+      expect(printed.string).to be_empty
+    end
+  end
+
+  describe ForkFlow::Console do
+    def console(input, yes: false, dry_run: false) = described_class.new(input:, output: printed, yes:, dry_run:)
+
+    it "takes the default without asking under --yes" do
+      input = terminal("other\n")
+
+      expect(console(input, yes: true).ask("Name?", "my_app")).to eq("my_app")
+      expect(input.pos).to eq(0)
+    end
+
+    it "still prompts at a terminal under --dry-run, but isn't interactive" do
+      dry_run = console(terminal, dry_run: true)
+
+      expect([ dry_run.prompts?, dry_run.interactive? ]).to eq([ true, false ])
+    end
+  end
+
   describe ForkFlow::Shell do
     def shell(dry_run: false) = described_class.new(root: repo.to_s, dry_run:, output: printed)
 

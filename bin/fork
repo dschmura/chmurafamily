@@ -151,6 +151,249 @@ class ForkFlow
     end
   end
 
+  class Console
+    def initialize(input:, output:, dry_run:, yes:)
+      @input = input
+      @output = output
+      @dry_run = dry_run
+      @yes = yes
+    end
+
+    def say(msg)  = @output.puts(msg)
+    def act(msg)  = @output.puts("#{@dry_run ? '[dry-run] would: ' : '  → '}#{msg}")
+    def skip(msg) = @output.puts("  ✓ #{msg} (already done)")
+
+    def prompts? = !@yes && @input.tty?
+    def interactive? = !@dry_run && prompts?
+
+    def ask(question, default)
+      return default unless prompts?
+
+      @output.print "#{question} [#{default}]: "
+      answer = @input.gets.to_s.strip
+      answer.empty? ? default : answer
+    end
+  end
+
+  class GithubRepo
+    def initialize(opts, root:, snake:, branch:, origin_present:, todos:, console:, shell:)
+      @opts = opts
+      @root = root
+      @snake = snake
+      @branch = branch
+      @origin_present = origin_present
+      @todos = todos
+      @console = console
+      @shell = shell
+    end
+
+    def origin_present? = @origin_present
+
+    def add_origin(url)
+      sh("git", "-C", @root, "remote", "add", "origin", url)
+      @origin_present = true
+      point_gh_at_origin!
+    end
+
+    # gh otherwise prefers the remote named upstream: the template.
+    def point_gh_at_origin!
+      sh("git", "-C", @root, "config", "remote.origin.gh-resolved", "base")
+      # Without it, gh offers the template first when a branch isn't pushed yet.
+      sh("git", "-C", @root, "config", "remote.pushDefault", "origin")
+    end
+
+    # Unknown (no gh, no GitHub origin) counts as present: nothing here can fix it.
+    def rules_present?
+      repo = GithubOrigin.repo(@root) or return true
+      count, status = capture("gh", "api", "repos/#{repo}/rulesets", "--jq", "length")
+      !status.zero? || count != "0"
+    rescue Errno::ENOENT
+      true
+    end
+
+    # True once origin holds this checkout's next; branch rules wait for that.
+    def publish
+      return github_dry_run if dry_run? && @opts[:github]
+      return github_by_hand if dry_run? || @opts[:github] == false
+      return github_by_hand(unasked: true) unless @opts[:github] || interactive?
+
+      if @origin_present
+        return github_by_hand unless push_to_origin?
+
+        say("\n== GitHub ==")
+        return next_branch? && push_next
+      end
+
+      login = github_login
+      return github_by_hand(gh_missing: @opts[:github] && !login) unless login && create_github_repo?
+
+      say("\n== GitHub ==")
+      return false unless next_branch?
+
+      owner, name = github_target(login)
+      visibility = github_visibility(owner, login)
+      url = github_url(owner, name)
+      return false unless create_github_repo!(owner, name, visibility, url)
+
+      add_origin(url)
+      push_next
+    end
+
+    def protect
+      return if @rules_blocked || !remote_next_matches?
+
+      team = @opts[:team] || (interactive? && ask("Does a second person approve PRs? (y/N)", "N").match?(/\A[Yy]/))
+      args = team ? [] : [ "--solo" ]
+      say("\n== Branch rules ==\n  $ #{[ 'bin/branch-rules', *args ].join(' ')}")
+      if @shell.run("bin/branch-rules", *args)
+        say(team ? "  Rules need one approval per PR; bin/branch-rules --solo removes it." :
+                   "  Rules are solo. A second approver later: bin/branch-rules (without --solo).")
+      else
+        @todos << "Protect the branches: #{[ 'bin/branch-rules', *args ].join(' ')}"
+      end
+    end
+
+    private
+
+    def snake = @snake
+    def dry_run? = @opts[:dry_run]
+    def interactive? = @console.interactive?
+    def say(msg) = @console.say(msg)
+    def act(msg) = @console.act(msg)
+    def ask(question, default) = @console.ask(question, default)
+    def sh(*cmd) = @shell.run!(*cmd)
+    def capture(*cmd) = @shell.capture(*cmd)
+
+    def manual_github_todos!
+      @todos << if @origin_present
+        "Push when ready: git push -u origin #{@branch}"
+      else
+        "Add your repository (create it EMPTY on GitHub first — no README/license):\n" \
+          "     git remote add origin git@github.com:YOU/#{snake}.git && git push -u origin #{@branch}"
+      end
+      @todos << "Once your branch is on GitHub, protect the branches: bin/branch-rules " \
+                "(add --solo if you merge your own PRs; /docs/developer/forking)"
+    end
+
+    def github_dry_run
+      target = @opts[:github].is_a?(String) ? @opts[:github] : "YOU/#{snake}"
+      target = "#{target}/#{snake}" unless target.include?("/")
+      act("create the GitHub repo #{target} (#{@opts[:visibility] || 'public'})") unless @origin_present
+      act("git push -u origin next")
+      act("bin/branch-rules#{' --solo' unless @opts[:team]}")
+      false
+    end
+
+    def github_by_hand(gh_missing: false, unasked: false)
+      say("\n  ! gh isn't installed or signed in, so the GitHub steps are listed by hand.") if gh_missing
+      say_how_to_publish if unasked
+      manual_github_todos!
+      false
+    end
+
+    # Nobody was there to choose the owner, so the run names the flag that does.
+    def say_how_to_publish
+      if @origin_present
+        say("\n  ! Not pushed to origin: nobody was asked. To push and protect: bin/fork --github")
+      else
+        say("\n  ! Not published to GitHub: nobody chose the owner. To publish: bin/fork --github OWNER")
+      end
+    end
+
+    def push_to_origin?
+      return true if @opts[:github]
+
+      interactive? && ask("\nPush next to origin and protect it? (Y/n)", "Y").match?(/\A[Yy]/)
+    end
+
+    def next_branch?
+      return true if @branch == "next"
+
+      say("  ! The GitHub step pushes next, but this checkout is on #{@branch}.")
+      @todos << "Switch to the branch with the rename, merge it into next, push next, then: bin/branch-rules --solo"
+      false
+    end
+
+    def remote_next_matches?
+      remote, status = capture("git", "-C", @root, "ls-remote", "origin", "refs/heads/next")
+      head, = capture("git", "-C", @root, "rev-parse", "HEAD")
+      status.zero? && remote.split.first == head
+    end
+
+    def github_login
+      _, status = capture("gh", "auth", "status")
+      return nil unless status.zero?
+
+      login, = capture("gh", "api", "user", "--jq", ".login")
+      login unless login.empty?
+    rescue Errno::ENOENT
+      nil
+    end
+
+    def create_github_repo?
+      return true if @opts[:github]
+
+      interactive? && ask("\nCreate the GitHub repo and push next to it? (Y/n)", "Y").match?(/\A[Yy]/)
+    end
+
+    def github_target(login)
+      given = @opts[:github] if @opts[:github].is_a?(String)
+      if given.nil? && interactive?
+        orgs, = capture("gh", "api", "user/orgs", "--jq", ".[].login")
+        say("  Your organizations: #{orgs.split.join(', ')}") unless orgs.empty?
+        given = ask("GitHub owner (or OWNER/NAME)", login)
+      end
+      owner, name = (given || login).split("/", 2)
+      [ owner, name || snake ]
+    end
+
+    def github_visibility(owner, login)
+      answer = @opts[:visibility] || (interactive? ? ask("Public or private?", "public") : "public")
+      visibility = answer.match?(/\Apriv/i) ? "private" : "public"
+      return visibility unless visibility == "private" && free_plan?(owner, login)
+
+      say("  ! #{owner} is on GitHub's free plan: a private repo there can't have branch rules, " \
+          "and its Actions minutes are capped.")
+      return "public" if interactive? && ask("Make it public instead? (Y/n)", "Y").match?(/\A[Yy]/)
+
+      @rules_blocked = true
+      @todos << "Your private repo on GitHub's free plan has no branch rules. " \
+                "After upgrading the plan, or making the repo public: bin/branch-rules --solo"
+      visibility
+    end
+
+    def free_plan?(owner, login)
+      plan, status = capture("gh", "api", owner == login ? "user" : "orgs/#{owner}", "--jq", ".plan.name")
+      status.zero? && plan == "free"
+    end
+
+    def github_url(owner, name)
+      protocol, = capture("gh", "config", "get", "git_protocol", "-h", "github.com")
+      protocol == "https" ? "https://github.com/#{owner}/#{name}.git" : "git@github.com:#{owner}/#{name}.git"
+    end
+
+    def create_github_repo!(owner, name, visibility, url)
+      act("create the GitHub repo #{owner}/#{name} (#{visibility})")
+      out, status = @shell.capture("gh", "repo", "create", "#{owner}/#{name}", "--#{visibility}", err: [ :child, :out ])
+      return true if status&.zero?
+
+      say("  ! gh repo create #{owner}/#{name} failed: #{out}\n    Nothing was pushed; the rename is committed here.")
+      @todos << "Create the GitHub repo: fix the error above and rerun bin/fork --github #{owner}/#{name}, " \
+                "or, if the repo already exists: bin/fork --origin #{url} --github"
+      false
+    end
+
+    def push_next
+      say("  $ git push -u origin next")
+      return true if @shell.run("git", "-C", @root, "push", "-u", "origin", "next")
+
+      say("  ! The push failed, so the branches are not protected yet.")
+      @todos << "Push the rename: git push -u origin next"
+      @todos << "Then protect the branches: bin/branch-rules --solo"
+      false
+    end
+  end
+
   attr_reader :todos
 
   def self.placeholder_email?(address) = !address.include?("@") || address.match?(PLACEHOLDER_EMAIL)
@@ -159,8 +402,7 @@ class ForkFlow
     @opts = options
     @root = File.expand_path(root)
     @todos = []
-    @input = input
-    @output = output
+    @console = Console.new(input:, output:, dry_run: options[:dry_run], yes: options[:yes])
     @shell = shell || Shell.new(root: @root, dry_run: options[:dry_run], output:)
   end
 
@@ -178,7 +420,7 @@ class ForkFlow
     step_rename!
     step_preset!(@preset)
     step_verify!
-    step_branch_rules! if step_github!
+    @github.protect if @github.publish
     @todos << "Set up outbound mail, which production requires: bin/mail-setup"
     print_summary!
     offer_mail_setup! if offer_setup!
@@ -305,7 +547,7 @@ class ForkFlow
 
   def collect_answers!
     @snake = normalize_name(@opts[:name] || ask("Project name?", File.basename(@root)))
-    @preset = @opts[:preset] || (ask_preset unless @opts[:yes] || !@input.tty?)
+    @preset = @opts[:preset] || (ask_preset if @console.prompts?)
     validate_preset!(@preset) if @preset
     @support_email = collect_support_email
     check_github_flags!
@@ -424,32 +666,19 @@ class ForkFlow
       say("    or name it: bin/fork --template URL")
     end
 
+    @github = github_repo(origin_present)
     if origin_present
       skip("origin remote present (#{origin_url})")
       say("  ! --origin ignored: an origin remote already exists") if @opts[:origin]
+      @github.point_gh_at_origin!
     elsif @opts[:origin]
-      sh("git", "-C", @root, "remote", "add", "origin", @opts[:origin])
+      @github.add_origin(@opts[:origin])
     end
-    @origin_present = origin_present || !@opts[:origin].nil?
-    point_gh_at_origin! if @origin_present
   end
 
-  # gh otherwise prefers the remote named upstream: the template.
-  def point_gh_at_origin!
-    sh("git", "-C", @root, "config", "remote.origin.gh-resolved", "base")
-    # Without it, gh offers the template first when a branch isn't pushed yet.
-    sh("git", "-C", @root, "config", "remote.pushDefault", "origin")
-  end
-
-  def manual_github_todos!
-    @todos << if @origin_present
-      "Push when ready: git push -u origin #{current_branch}"
-    else
-      "Add your repository (create it EMPTY on GitHub first — no README/license):\n" \
-        "     git remote add origin git@github.com:YOU/#{snake}.git && git push -u origin #{current_branch}"
-    end
-    @todos << "Once your branch is on GitHub, protect the branches: bin/branch-rules " \
-              "(add --solo if you merge your own PRs; /docs/developer/forking)"
+  def github_repo(origin_present)
+    GithubRepo.new(@opts, root: @root, snake:, branch: current_branch, origin_present:,
+                          todos: @todos, console: @console, shell: @shell)
   end
 
   def upstream_taken?
@@ -583,16 +812,12 @@ class ForkFlow
     check_github_flags!
     set_support_address_on_fork!
     _, status = capture("git", "-C", @root, "remote", "get-url", "origin")
-    @origin_present = status.zero?
-    if !@origin_present && @opts[:origin]
-      sh("git", "-C", @root, "remote", "add", "origin", @opts[:origin])
-      @origin_present = true
-      point_gh_at_origin!
-    end
+    @github = github_repo(status.zero?)
+    @github.add_origin(@opts[:origin]) if !@github.origin_present? && @opts[:origin]
     return unless @opts[:github] || interactive?
-    return if @origin_present && branch_rules_present?
+    return if @github.origin_present? && @github.rules_present?
 
-    step_branch_rules! if step_github!
+    @github.protect if @github.publish
     print_summary!
   end
 
@@ -616,15 +841,6 @@ class ForkFlow
     commit!("Set the support address", path)
   end
 
-  # Unknown (no gh, no GitHub origin) counts as present: nothing here can fix it.
-  def branch_rules_present?
-    repo = GithubOrigin.repo(@root) or return true
-    count, status = capture("gh", "api", "repos/#{repo}/rulesets", "--jq", "length")
-    !status.zero? || count != "0"
-  rescue Errno::ENOENT
-    true
-  end
-
   def report_already_forked!
     say("== #{fork_config['product_name'] || 'This repo'} is already forked ==")
     say("  Nothing renamed — the identity rename is committed (#{FORK_FILE} records it).")
@@ -632,172 +848,10 @@ class ForkFlow
     say("\nNext: bin/setup")
   end
 
-  # True once origin holds this checkout's next; branch rules wait for that.
-  def step_github!
-    return github_dry_run if dry_run? && @opts[:github]
-    return github_by_hand if dry_run? || @opts[:github] == false
-    return github_by_hand(unasked: true) unless @opts[:github] || interactive?
-
-    if @origin_present
-      return github_by_hand unless push_to_origin?
-
-      say("\n== GitHub ==")
-      return next_branch? && push_next
-    end
-
-    login = github_login
-    return github_by_hand(gh_missing: @opts[:github] && !login) unless login && create_github_repo?
-
-    say("\n== GitHub ==")
-    return false unless next_branch?
-
-    owner, name = github_target(login)
-    visibility = github_visibility(owner, login)
-    url = github_url(owner, name)
-    return false unless create_github_repo!(owner, name, visibility, url)
-
-    sh("git", "-C", @root, "remote", "add", "origin", url)
-    @origin_present = true
-    point_gh_at_origin!
-    push_next
-  end
-
-  def github_dry_run
-    target = @opts[:github].is_a?(String) ? @opts[:github] : "YOU/#{snake}"
-    target = "#{target}/#{snake}" unless target.include?("/")
-    act("create the GitHub repo #{target} (#{@opts[:visibility] || 'public'})") unless @origin_present
-    act("git push -u origin next")
-    act("bin/branch-rules#{' --solo' unless @opts[:team]}")
-    false
-  end
-
-  def github_by_hand(gh_missing: false, unasked: false)
-    say("\n  ! gh isn't installed or signed in, so the GitHub steps are listed by hand.") if gh_missing
-    say_how_to_publish if unasked
-    manual_github_todos!
-    false
-  end
-
-  # Nobody was there to choose the owner, so the run names the flag that does.
-  def say_how_to_publish
-    if @origin_present
-      say("\n  ! Not pushed to origin: nobody was asked. To push and protect: bin/fork --github")
-    else
-      say("\n  ! Not published to GitHub: nobody chose the owner. To publish: bin/fork --github OWNER")
-    end
-  end
-
-  def push_to_origin?
-    return true if @opts[:github]
-
-    interactive? && ask("\nPush next to origin and protect it? (Y/n)", "Y").match?(/\A[Yy]/)
-  end
-
   def check_github_flags!
     return unless @opts[:origin] && @opts[:github].is_a?(String)
 
     abort("bin/fork: use --github OWNER on its own, or --origin URL --github (push to a repo that exists)")
-  end
-
-  def next_branch?
-    return true if current_branch == "next"
-
-    say("  ! The GitHub step pushes next, but this checkout is on #{current_branch}.")
-    @todos << "Switch to the branch with the rename, merge it into next, push next, then: bin/branch-rules --solo"
-    false
-  end
-
-  def step_branch_rules!
-    return if @rules_blocked || !remote_next_matches?
-
-    team = @opts[:team] || (interactive? && ask("Does a second person approve PRs? (y/N)", "N").match?(/\A[Yy]/))
-    args = team ? [] : [ "--solo" ]
-    say("\n== Branch rules ==\n  $ #{[ 'bin/branch-rules', *args ].join(' ')}")
-    if @shell.run("bin/branch-rules", *args)
-      say(team ? "  Rules need one approval per PR; bin/branch-rules --solo removes it." :
-                 "  Rules are solo. A second approver later: bin/branch-rules (without --solo).")
-    else
-      @todos << "Protect the branches: #{[ 'bin/branch-rules', *args ].join(' ')}"
-    end
-  end
-
-  def remote_next_matches?
-    remote, status = capture("git", "-C", @root, "ls-remote", "origin", "refs/heads/next")
-    head, = capture("git", "-C", @root, "rev-parse", "HEAD")
-    status.zero? && remote.split.first == head
-  end
-
-  def github_login
-    _, status = capture("gh", "auth", "status")
-    return nil unless status.zero?
-
-    login, = capture("gh", "api", "user", "--jq", ".login")
-    login unless login.empty?
-  rescue Errno::ENOENT
-    nil
-  end
-
-  def create_github_repo?
-    return true if @opts[:github]
-
-    interactive? && ask("\nCreate the GitHub repo and push next to it? (Y/n)", "Y").match?(/\A[Yy]/)
-  end
-
-  def github_target(login)
-    given = @opts[:github] if @opts[:github].is_a?(String)
-    if given.nil? && interactive?
-      orgs, = capture("gh", "api", "user/orgs", "--jq", ".[].login")
-      say("  Your organizations: #{orgs.split.join(', ')}") unless orgs.empty?
-      given = ask("GitHub owner (or OWNER/NAME)", login)
-    end
-    owner, name = (given || login).split("/", 2)
-    [ owner, name || snake ]
-  end
-
-  def github_visibility(owner, login)
-    answer = @opts[:visibility] || (interactive? ? ask("Public or private?", "public") : "public")
-    visibility = answer.match?(/\Apriv/i) ? "private" : "public"
-    return visibility unless visibility == "private" && free_plan?(owner, login)
-
-    say("  ! #{owner} is on GitHub's free plan: a private repo there can't have branch rules, " \
-        "and its Actions minutes are capped.")
-    return "public" if interactive? && ask("Make it public instead? (Y/n)", "Y").match?(/\A[Yy]/)
-
-    @rules_blocked = true
-    @todos << "Your private repo on GitHub's free plan has no branch rules. " \
-              "After upgrading the plan, or making the repo public: bin/branch-rules --solo"
-    visibility
-  end
-
-  def free_plan?(owner, login)
-    plan, status = capture("gh", "api", owner == login ? "user" : "orgs/#{owner}", "--jq", ".plan.name")
-    status.zero? && plan == "free"
-  end
-
-  def github_url(owner, name)
-    protocol, = capture("gh", "config", "get", "git_protocol", "-h", "github.com")
-    protocol == "https" ? "https://github.com/#{owner}/#{name}.git" : "git@github.com:#{owner}/#{name}.git"
-  end
-
-  def create_github_repo!(owner, name, visibility, url)
-    act("create the GitHub repo #{owner}/#{name} (#{visibility})")
-    out, status = @shell.capture("gh", "repo", "create", "#{owner}/#{name}", "--#{visibility}", err: [ :child, :out ])
-    return true if status&.zero?
-
-    say("  ! gh repo create #{owner}/#{name} failed: #{out}\n    Nothing was pushed; the rename is committed here.")
-    @todos << "Create the GitHub repo: fix the error above and rerun bin/fork --github #{owner}/#{name}, " \
-              "or, if the repo already exists: bin/fork --origin #{url} --github"
-    false
-  end
-
-  def push_next
-    say("  $ git push -u origin next")
-    return true if @shell.run("git", "-C", @root, "push", "-u", "origin", "next")
-
-    say("  ! The push failed, so the branches are not protected yet.")
-    @todos << "Push the rename: git push -u origin next"
-    @todos << "Then protect the branches: bin/branch-rules --solo"
-    false
   end
 
   def step_verify!
@@ -893,7 +947,7 @@ class ForkFlow
     say("    Run bin/mail-setup when ready; development mail keeps working locally.")
   end
 
-  def interactive? = !dry_run? && !@opts[:yes] && @input.tty?
+  def interactive? = @console.interactive?
 
   def print_summary!
     return if @todos.empty?
@@ -911,20 +965,13 @@ class ForkFlow
   def dry_run? = @opts[:dry_run]
   def path_to(relative) = File.join(@root, relative)
 
-  def say(msg)  = @output.puts(msg)
-  def act(msg)  = @output.puts("#{dry_run? ? '[dry-run] would: ' : '  → '}#{msg}")
-  def skip(msg) = @output.puts("  ✓ #{msg} (already done)")
+  def say(msg)  = @console.say(msg)
+  def act(msg)  = @console.act(msg)
+  def skip(msg) = @console.skip(msg)
+  def ask(question, default) = @console.ask(question, default)
 
   def sh(*cmd) = @shell.run!(*cmd)
   def capture(*cmd) = @shell.capture(*cmd)
-
-  def ask(question, default)
-    return default if @opts[:yes] || !@input.tty?
-
-    @output.print "#{question} [#{default}]: "
-    answer = @input.gets.to_s.strip
-    answer.empty? ? default : answer
-  end
 
   # Pathspec-limited so a developer's unrelated staged work never lands in the
   # identity commit — "one clean commit you can always find again" has to mean it.
