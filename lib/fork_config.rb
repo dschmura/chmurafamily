@@ -5,6 +5,7 @@ require "yaml"
 # The decisions bin/fork recorded in .fork.yml. Stdlib only: bin/ scripts load it before bundle install.
 class ForkConfig
   FILE = ".fork.yml"
+  PRESETS = %w[personal shared none].freeze
 
   TENANCY_VARIABLES = %w[WORKSPACE_ON_SIGNUP TENANCY_SHARED_WORKSPACE_SLUG].freeze
 
@@ -22,8 +23,10 @@ class ForkConfig
     @data = data
   end
 
+  def recorded? = @data.any?
   def preset = @data["preset"]
   def name = @data["name"]
+  def template_url = @data["template_url"]
 
   def tenancy_defaults
     return {} unless preset

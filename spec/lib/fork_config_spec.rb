@@ -12,6 +12,24 @@ RSpec.describe ForkConfig do
   def record(yaml) = @root.join(".fork.yml").write(yaml)
   def defaults = described_class.read(@root).tenancy_defaults
 
+  it "has recorded nothing in the template, and something once bin/fork has run" do
+    expect(described_class.read(@root)).not_to be_recorded
+
+    record("name: my_app\n")
+
+    expect(described_class.read(@root)).to be_recorded
+  end
+
+  it "reads the template a fork came from" do
+    record("name: my_app\ntemplate_url: git@github.com:someone/modelrails_base.git\n")
+
+    expect(described_class.read(@root).template_url).to eq("git@github.com:someone/modelrails_base.git")
+  end
+
+  it "knows a preset the app would refuse to boot on" do
+    expect(described_class::PRESETS).to contain_exactly("personal", "shared", "none")
+  end
+
   describe "#tenancy_defaults" do
     it "makes a recorded shared preset the default, with the app's name as its slug" do
       record("name: my_app\npreset: shared\n")
