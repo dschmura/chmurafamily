@@ -129,16 +129,39 @@ class ForkFlow
   # The shapes the fork_only placeholder check in template_invariants_spec.rb fails on.
   PLACEHOLDER_EMAIL = /[\w.+-]+@[\w.-]+\.example\b|[\w.+-]+@example\.com\b/
 
+  class Shell
+    def initialize(root:, dry_run:, output:)
+      @root = root
+      @dry_run = dry_run
+      @output = output
+    end
+
+    def run!(*cmd)
+      @output.puts("  $ #{cmd.reject { |c| c == @root || c == '-C' }.join(' ')}")
+      return true if @dry_run
+
+      system(CLEAN_GIT_ENV, *cmd) || abort("bin/fork: command failed: #{cmd.join(' ')}")
+    end
+
+    def run(*cmd) = system(CLEAN_GIT_ENV, *cmd, chdir: @root)
+
+    def capture(*cmd, err: File::NULL)
+      out = IO.popen(CLEAN_GIT_ENV, cmd, err:, &:read)
+      [ out.to_s.strip, $?.exitstatus ]
+    end
+  end
+
   attr_reader :todos
 
   def self.placeholder_email?(address) = !address.include?("@") || address.match?(PLACEHOLDER_EMAIL)
 
-  def initialize(options, root: Dir.pwd, input: $stdin, output: $stdout)
+  def initialize(options, root: Dir.pwd, input: $stdin, output: $stdout, shell: nil)
     @opts = options
     @root = File.expand_path(root)
     @todos = []
     @input = input
     @output = output
+    @shell = shell || Shell.new(root: @root, dry_run: options[:dry_run], output:)
   end
 
   def run
@@ -690,7 +713,7 @@ class ForkFlow
     team = @opts[:team] || (interactive? && ask("Does a second person approve PRs? (y/N)", "N").match?(/\A[Yy]/))
     args = team ? [] : [ "--solo" ]
     say("\n== Branch rules ==\n  $ #{[ 'bin/branch-rules', *args ].join(' ')}")
-    if system(CLEAN_GIT_ENV, "bin/branch-rules", *args, chdir: @root)
+    if @shell.run("bin/branch-rules", *args)
       say(team ? "  Rules need one approval per PR; bin/branch-rules --solo removes it." :
                  "  Rules are solo. A second approver later: bin/branch-rules (without --solo).")
     else
@@ -758,10 +781,10 @@ class ForkFlow
 
   def create_github_repo!(owner, name, visibility, url)
     act("create the GitHub repo #{owner}/#{name} (#{visibility})")
-    out = IO.popen(CLEAN_GIT_ENV, [ "gh", "repo", "create", "#{owner}/#{name}", "--#{visibility}" ], err: [ :child, :out ], &:read)
-    return true if $?.success?
+    out, status = @shell.capture("gh", "repo", "create", "#{owner}/#{name}", "--#{visibility}", err: [ :child, :out ])
+    return true if status&.zero?
 
-    say("  ! gh repo create #{owner}/#{name} failed: #{out.strip}\n    Nothing was pushed; the rename is committed here.")
+    say("  ! gh repo create #{owner}/#{name} failed: #{out}\n    Nothing was pushed; the rename is committed here.")
     @todos << "Create the GitHub repo: fix the error above and rerun bin/fork --github #{owner}/#{name}, " \
               "or, if the repo already exists: bin/fork --origin #{url} --github"
     false
@@ -769,7 +792,7 @@ class ForkFlow
 
   def push_next
     say("  $ git push -u origin next")
-    return true if system(CLEAN_GIT_ENV, "git", "-C", @root, "push", "-u", "origin", "next")
+    return true if @shell.run("git", "-C", @root, "push", "-u", "origin", "next")
 
     say("  ! The push failed, so the branches are not protected yet.")
     @todos << "Push the rename: git push -u origin next"
@@ -851,7 +874,7 @@ class ForkFlow
     say("\n== Running bin/setup ==")
     # --skip-server: bin/setup ends with `exec bin/dev`, which would replace this
     # process and start a server nobody asked for.
-    return true if system(CLEAN_GIT_ENV, "bin/setup", "--skip-server", chdir: @root)
+    return true if @shell.run("bin/setup", "--skip-server")
 
     say("\n  ! bin/setup failed — but the fork itself is already committed, so there")
     say("    is nothing here to redo. Fix the setup problem and re-run bin/setup.")
@@ -863,7 +886,7 @@ class ForkFlow
 
     if ask("\nSet up outbound mail now?", "N").match?(/\A[Yy]/)
       say("\n== Running bin/mail-setup ==")
-      return if system(CLEAN_GIT_ENV, "bin/mail-setup", chdir: @root)
+      return if @shell.run("bin/mail-setup")
     end
 
     say("\n  ! Mail isn't set up, so production will refuse to boot until it is.")
@@ -892,17 +915,8 @@ class ForkFlow
   def act(msg)  = @output.puts("#{dry_run? ? '[dry-run] would: ' : '  → '}#{msg}")
   def skip(msg) = @output.puts("  ✓ #{msg} (already done)")
 
-  def sh(*cmd)
-    say("  $ #{cmd.reject { |c| c == @root || c == '-C' }.join(' ')}")
-    return true if dry_run?
-
-    system(CLEAN_GIT_ENV, *cmd) || abort("bin/fork: command failed: #{cmd.join(' ')}")
-  end
-
-  def capture(*cmd)
-    out = IO.popen(CLEAN_GIT_ENV, cmd, err: File::NULL, &:read)
-    [ out.to_s.strip, $?.exitstatus ]
-  end
+  def sh(*cmd) = @shell.run!(*cmd)
+  def capture(*cmd) = @shell.capture(*cmd)
 
   def ask(question, default)
     return default if @opts[:yes] || !@input.tty?

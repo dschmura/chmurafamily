@@ -1205,34 +1205,30 @@ RSpec.describe ForkFlow do
     end
   end
 
-  # Shelling out is the behaviour here, so `system` is the right thing to stub —
-  # actually running bundle install and db:prepare inside an example would be
-  # absurd. (Contrast the git specs above, where repository state is the point
-  # and stubbing would prove nothing.)
+  # A fake shell: running bundle install and db:prepare inside an example would be absurd.
   describe "offering bin/setup" do
+    let(:shell) { instance_double(ForkFlow::Shell, run: true) }
+
     def flow_for(opts, input = terminal)
-      described_class.new(opts, root: repo.to_s, input:, output: printed)
+      described_class.new(opts, root: repo.to_s, input:, output: printed, shell:)
     end
 
     it "does not offer under --yes, so scripts and orchestrators stay deterministic" do
-      flow = flow_for(name: "my_app", yes: true)
-      expect(flow).not_to receive(:system)
+      flow_for(name: "my_app", yes: true).offer_setup!
 
-      flow.offer_setup!
+      expect(shell).not_to have_received(:run)
     end
 
     it "does not offer when stdin is not a terminal" do
-      flow = flow_for({ name: "my_app" }, StringIO.new)
-      expect(flow).not_to receive(:system)
+      flow_for({ name: "my_app" }, StringIO.new).offer_setup!
 
-      flow.offer_setup!
+      expect(shell).not_to have_received(:run)
     end
 
     it "does not offer under --dry-run" do
-      flow = flow_for(name: "my_app", dry_run: true)
-      expect(flow).not_to receive(:system)
+      flow_for(name: "my_app", dry_run: true).offer_setup!
 
-      flow.offer_setup!
+      expect(shell).not_to have_received(:run)
     end
 
     context "when interactive" do
@@ -1241,30 +1237,19 @@ RSpec.describe ForkFlow do
       # --skip-server matters: bin/setup ends with `exec bin/dev`, which would
       # replace this process and launch a server nobody asked for.
       it "runs bin/setup without starting the dev server when accepted" do
-        flow = answering("\n") # bare Enter takes the default
+        answering("\n").offer_setup! # bare Enter takes the default
 
-        # The env hash is positionally first (#789): bin/setup shells git itself,
-        # so it must not inherit a GIT_DIR either.
-        expect(flow).to receive(:system)
-          .with(hash_including("GIT_DIR" => nil), "bin/setup", "--skip-server",
-                hash_including(chdir: repo.to_s))
-          .and_return(true)
-
-        flow.offer_setup!
+        expect(shell).to have_received(:run).with("bin/setup", "--skip-server")
       end
 
       it "does nothing when declined" do
-        flow = answering("n\n")
-        expect(flow).not_to receive(:system)
+        answering("n\n").offer_setup!
 
-        flow.offer_setup!
+        expect(shell).not_to have_received(:run)
       end
 
       it "reports success when bin/setup ran and passed" do
-        flow = answering("y\n")
-        allow(flow).to receive(:system).and_return(true)
-
-        expect(flow.offer_setup!).to be(true)
+        expect(answering("y\n").offer_setup!).to be(true)
       end
 
       it "reports no success when declined" do
@@ -1272,19 +1257,17 @@ RSpec.describe ForkFlow do
       end
 
       it "reports no success when bin/setup fails" do
-        flow = answering("y\n")
-        allow(flow).to receive(:system).and_return(false)
+        allow(shell).to receive(:run).and_return(false)
 
-        expect(flow.offer_setup!).to be(false)
+        expect(answering("y\n").offer_setup!).to be(false)
       end
 
       # The fork is committed before setup is even offered, so a setup failure
       # must not send anyone back to re-run bin/fork.
       it "reports that the fork itself is already committed when setup fails" do
-        flow = answering("y\n")
-        allow(flow).to receive(:system).and_return(false)
+        allow(shell).to receive(:run).and_return(false)
 
-        flow.offer_setup!
+        answering("y\n").offer_setup!
 
         expect(printed.string).to match(/already committed/i).and match(/re-run bin\/setup/i)
       end
@@ -1292,62 +1275,81 @@ RSpec.describe ForkFlow do
   end
 
   describe "#offer_mail_setup!" do
-    def flow_for(opts, input) = described_class.new(opts, root: repo.to_s, input:, output: printed)
+    let(:shell) { instance_double(ForkFlow::Shell, run: true) }
+
+    def flow_for(opts, input) = described_class.new(opts, root: repo.to_s, input:, output: printed, shell:)
 
     [ { yes: true }, { dry_run: true } ].each do |opts|
       it "doesn't ask under #{opts.keys.first}" do
         input = terminal("y\n")
-        flow = flow_for({ name: "my_app", **opts }, input)
-        expect(flow).not_to receive(:system)
 
-        flow.offer_mail_setup!
+        flow_for({ name: "my_app", **opts }, input).offer_mail_setup!
 
         expect(input.pos).to eq(0)
+        expect(shell).not_to have_received(:run)
       end
     end
 
     it "doesn't ask when stdin is not a terminal" do
       input = StringIO.new("y\n")
-      flow = flow_for({ name: "my_app" }, input)
-      expect(flow).not_to receive(:system)
 
-      flow.offer_mail_setup!
+      flow_for({ name: "my_app" }, input).offer_mail_setup!
 
       expect(input.pos).to eq(0)
+      expect(shell).not_to have_received(:run)
     end
 
     context "when interactive" do
       def answering(typed) = flow_for({ name: "my_app" }, terminal(typed))
 
       it "treats a bare Enter as No, warns, and changes nothing" do
-        flow = answering("\n")
-        expect(flow).not_to receive(:system)
+        answering("\n").offer_mail_setup!
 
-        flow.offer_mail_setup!
-
+        expect(shell).not_to have_received(:run)
         expect(printed.string).to include("production will refuse to boot", "bin/mail-setup", "development mail keeps working")
         expect(capture_git("status", "--porcelain")).to eq("")
       end
 
       it "runs bin/mail-setup on a yes, without a warning when it succeeds" do
-        flow = answering("y\n")
-        expect(flow).to receive(:system)
-          .with(hash_including("GIT_DIR" => nil), "bin/mail-setup", hash_including(chdir: repo.to_s))
-          .and_return(true)
+        answering("y\n").offer_mail_setup!
 
-        flow.offer_mail_setup!
-
+        expect(shell).to have_received(:run).with("bin/mail-setup")
         expect(printed.string).not_to include("production will refuse to boot")
       end
 
       it "warns when bin/mail-setup is declined or fails" do
-        flow = answering("y\n")
-        allow(flow).to receive(:system).and_return(false)
+        allow(shell).to receive(:run).and_return(false)
 
-        flow.offer_mail_setup!
+        answering("y\n").offer_mail_setup!
 
         expect(printed.string).to include("production will refuse to boot")
       end
+    end
+  end
+
+  describe ForkFlow::Shell do
+    def shell(dry_run: false) = described_class.new(root: repo.to_s, dry_run:, output: printed)
+
+    it "clears an inherited GIT_DIR from what it runs" do
+      inherited = ENV["GIT_DIR"]
+      ENV["GIT_DIR"] = workdir.join("elsewhere").to_s
+
+      expect(shell.run("sh", "-c", 'test -z "$GIT_DIR"')).to be(true)
+    ensure
+      ENV["GIT_DIR"] = inherited
+    end
+
+    it "runs in the fork's root" do
+      shell.run("sh", "-c", "pwd -P > where.txt")
+
+      expect(repo.join("where.txt").read.strip).to eq(repo.realpath.to_s)
+    end
+
+    it "prints a command under --dry-run and runs nothing" do
+      shell(dry_run: true).run!("touch", "made.txt")
+
+      expect(repo.join("made.txt")).not_to exist
+      expect(printed.string).to include("$ touch made.txt")
     end
   end
 
