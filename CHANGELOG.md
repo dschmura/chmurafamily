@@ -4,6 +4,32 @@ All notable changes to ModelRails are documented here, organized by phase.
 
 ## [Unreleased]
 
+## v2026.11.11
+
+### Removed
+
+- `Resource#client_visible?` is gone; look resources up through `Project#client_visible_resources`, which also leaves out deleted ones.
+- `bin/deploy-guide` is gone; read Changing the defaults, or Fork to Served for the whole path.
+
+### Changed
+
+- New invitations get `Invitation::LIFETIME` (7 days) when no expiry is given.
+- `bin/setup`, `bin/fork`, `bin/mail-setup`, `bin/sync` and `bin/release` read `.fork.yml` through `ForkConfig` (`lib/fork_config.rb`); a fork that customised one of them should read the file the same way.
+- `bin/setup` writes `.env` through a temp file, readable only by you, so an interrupted run can't empty it.
+- A Fork to Served page lists every step from cloning the template to a deployed app you can sign in to, each with its check.
+- Specs now fail if a deleted document can be opened by a client or a team member, if removing a connected account skips the fresh sign-in check, or if a new magic-link invitation is already expired.
+- Specs now fail if a project's description stops saving, the theme toggle's own field stops saving the theme, a plain button starts submitting its form, or reactivating a member lands somewhere else.
+
+### Added
+
+- [Changing the defaults](/docs/developer/changing-the-defaults) lists every default a fork starts with, where it's set, and how to change it.
+- Kamal runs `bin/rails deploy:check` before every image build (`.kamal/hooks/pre-build`), so a deploy production would refuse stops before anything is built, and `hooks_output` in `config/deploy.yml` prints its warnings on every deploy. A fork with its own `pre-build` hook should call the check from it.
+- `bin/rails deploy:check` lists everything that would stop production booting, or a first deploy finishing, before you deploy (`DESTINATION=staging` for staging). It reads the deploy through Kamal, `.kamal/secrets` included.
+
+### Fixed
+
+- Production uses the tenancy preset (and the shared preset's slug) that `bin/fork` recorded in `.fork.yml` when `WORKSPACE_ON_SIGNUP` is unset, so a `shared` or `none` fork no longer goes live as `personal`. Set the variable only to override it.
+
 ## v2026.11.08
 
 ### Changed
