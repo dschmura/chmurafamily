@@ -74,9 +74,11 @@ Commit `config/credentials/production.yml.enc`. The key,
 `config/credentials/production.key`, stays out of git: save it in a password
 manager now, because nobody can decrypt the credentials without it.
 
-**Check:** `bin/mail-setup` ends by saying what to commit and what production
-still refuses. Details: [Deployment: Configure outbound mail](deployment#4-configure-outbound-mail)
-and [Forking: Bootstrap secrets](forking#bootstrap-secrets-and-configuration).
+**Check:** `bin/rails deploy:check` no longer lists the credentials, the mail
+login or the encryption keys. What it still lists is step 6's work. Details:
+[Deployment: Configure outbound mail](deployment#4-configure-outbound-mail),
+[Forking: Bootstrap secrets](forking#bootstrap-secrets-and-configuration) and
+[Deployment: Production preflight](deployment#production-preflight).
 
 ## 5. A server
 
@@ -93,7 +95,9 @@ a password login is refused. Details:
 
 In `config/deploy.yml`, set the server's address (exactly one), uncomment
 `proxy:` with your domain, match `builder.arch` to the server, and set
-`RAILS_HOST` and `BACKUP_PATH`. Point your domain at the server, then:
+`RAILS_HOST` and `BACKUP_PATH`. `bin/rails deploy:check` then says "Nothing here
+stops a deploy." Kamal runs the same check before every build, and stops a
+deploy that would fail. Point your domain at the server, then:
 
 ```bash
 bin/kamal setup     # the first time

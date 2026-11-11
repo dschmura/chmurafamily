@@ -362,12 +362,9 @@ class MailSetup
       lines << "  decrypted. Don't run them on a shared screen."
 
       lines.push("", "Before you deploy")
-      lines << numbered.("Production also refuses to start until these are set:")
-      lines << "       RAILS_HOST, under env.clear in config/deploy.yml"
-      lines << "       The encryption keys: run bin/rails db:encryption:init once, and paste"
-      lines << "         its block into bin/rails credentials:edit --environment production"
-      lines << "       Any backup destination you started"
-      lines << "     Details: /docs/developer/deployment (Production preflight)"
+      lines << numbered.("Run bin/rails deploy:check. It lists what production still refuses, such as")
+      lines << "     RAILS_HOST and the encryption keys, each with its fix. Kamal runs it before"
+      lines << "     every build too, and stops a deploy that would fail."
       lines << numbered.("Check that your provider shows the domain and DNS records as verified.")
       if provider == "Amazon SES"
         lines << "     Request production access too. A new account starts in a sandbox, where a"
