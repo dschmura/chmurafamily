@@ -4,6 +4,12 @@ All notable changes to ModelRails are documented here, organized by phase.
 
 ## [Unreleased]
 
+## v2026.11.08
+
+### Changed
+
+- `bin/fork` creates your GitHub repo, pushes `next` and protects the branches, and asks for the support address.
+
 ## v2026.11.07
 
 ### Changed
