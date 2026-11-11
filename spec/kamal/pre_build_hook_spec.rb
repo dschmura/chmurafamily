@@ -18,11 +18,15 @@ RSpec.describe ".kamal/hooks/pre-build" do
     @app.join("bin").mkpath
     FileUtils.cp(hook, @app.join(".kamal/hooks/pre-build"))
     @app.join(".kamal/hooks/pre-build").chmod(0o755)
-    @app.join("bin/rails").write("#!/bin/sh\necho \"rails $* DESTINATION=$DESTINATION\"\nexit #{code}\n")
+    @app.join("bin/rails").write("#!/bin/sh\necho \"rails $* DESTINATION=$DESTINATION RAILS_ENV=$RAILS_ENV\"\nexit #{code}\n")
     @app.join("bin/rails").chmod(0o755)
   end
 
-  def run_hook(env = {}) = Open3.capture2e(env, @app.join(".kamal/hooks/pre-build").to_s, chdir: "/")
+  # Unset unless an example sets it, so the runner's own environment can't reach the hook.
+  def run_hook(env = {})
+    hermetic = { "KAMAL_DESTINATION" => nil, "DESTINATION" => nil, "RAILS_ENV" => nil }
+    Open3.capture2e(hermetic.merge(env), @app.join(".kamal/hooks/pre-build").to_s, chdir: "/")
+  end
 
   it "is executable, so Kamal runs it" do
     expect(hook).to be_executable
@@ -34,7 +38,7 @@ RSpec.describe ".kamal/hooks/pre-build" do
     output, status = run_hook("KAMAL_DESTINATION" => "staging")
 
     expect(status).to be_success
-    expect(output).to include("rails deploy:check DESTINATION=staging")
+    expect(output).to include("rails deploy:check DESTINATION=staging ")
   end
 
   # CI's deploy job exports DESTINATION=production, which names no deploy file.
@@ -43,7 +47,24 @@ RSpec.describe ".kamal/hooks/pre-build" do
 
     output, = run_hook("DESTINATION" => "production")
 
-    expect(output).to include("rails deploy:check DESTINATION=\n")
+    expect(output).to include("rails deploy:check DESTINATION= ")
+  end
+
+  it "checks from development, whatever RAILS_ENV the shell exports" do
+    app_whose_check_exits(0)
+
+    output, = run_hook("RAILS_ENV" => "production")
+
+    expect(output).to include("RAILS_ENV=development")
+  end
+
+  it "shows the check's warnings on every deploy, not only when it fails" do
+    require "kamal"
+    @app.join("config").mkpath
+    FileUtils.cp(Rails.root.join("config/deploy.yml"), @app.join("config/deploy.yml"))
+    config = Dir.chdir(@app) { Kamal::Configuration.create_from(config_file: Pathname("config/deploy.yml")) }
+
+    expect(config.hooks_output_for("pre-build")).to eq(:verbose)
   end
 
   it "stops the build when the check refuses" do

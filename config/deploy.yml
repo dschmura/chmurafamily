@@ -156,6 +156,10 @@ builder:
   #   - GITHUB_TOKEN
   #   - RAILS_MASTER_KEY
 
+# Prints bin/rails deploy:check's warnings on every deploy; Kamal hides a passing hook's output.
+hooks_output:
+  pre-build: verbose
+
 # Use a different ssh user than root
 # ssh:
 #   user: app

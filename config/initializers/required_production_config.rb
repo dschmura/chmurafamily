@@ -18,8 +18,8 @@ module RequiredProductionConfig
 
   def self.check!(env = ENV, credentials = Rails.application.credentials,
                   encryption = Rails.application.config.active_record.encryption, logger: Rails.logger)
-    problem = problems(env, credentials, encryption).first
-    raise problem if problem
+    refusal = refusals(env, credentials, encryption).first
+    raise refusal if refusal
     return unless backups_off?(env)
 
     logger.warn("Backups are off: nothing copies the database or uploaded files anywhere. " \
@@ -27,7 +27,7 @@ module RequiredProductionConfig
   end
 
   # Every refusal, in the order a boot meets them, so a check before deploying can list them all.
-  def self.problems(env = ENV, credentials = Rails.application.credentials,
+  def self.refusals(env = ENV, credentials = Rails.application.credentials,
                     encryption = Rails.application.config.active_record.encryption)
     [ host_refusal(env), mail_refusal(env, credentials), encryption_refusal(credentials, encryption),
       backups_refusal(env, credentials) ].compact
