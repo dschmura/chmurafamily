@@ -78,6 +78,9 @@ pass `--github`) the GitHub repo, the push, or the branch rules.
 When run interactively it finishes by offering to run `bin/setup` for you (the
 dev server is not started — that stays your call). Under `--yes`, or when stdin
 isn't a terminal, it never does: scripted and CI runs stay fast and predictable.
+When that `bin/setup` succeeds, it offers `bin/mail-setup` next (default: no).
+Production refuses to boot until outbound mail is set up, so the next steps it
+prints name `bin/mail-setup` either way.
 
 ### From a GitHub fork, or a fork of a fork
 
@@ -188,9 +191,9 @@ bin/setup
 ```
 
 `bin/setup` reads `.fork.yml` and does the per-clone work: adds the upstream
-remote (push disabled), activates the merge driver, and writes the fork's
-recorded tenancy preset into their `.env`. Those three things are per-clone, not
-per-fork, which is why they live in setup rather than in the one-time script.
+remote (push disabled), activates the merge driver, points `gh` at your fork,
+and writes the fork's recorded tenancy preset into their `.env`. Those are
+per-clone, not per-fork, which is why they live in setup rather than in the one-time script.
 It also installs the git hooks (see [Getting started](getting-started#gate-1-local-lefthook-pre-push));
 a clone that skipped `bin/setup` checks nothing until CI does.
 
@@ -214,16 +217,16 @@ find again.
 | Docker image name | `config/deploy.yml` (`image:`) | Must match your registry path |
 | Storage volume names | `config/deploy.yml` (`volumes:`) | Renaming later orphans the old volume — do it before first deploy |
 | Brand strings | `config/locales/en/brand.en.yml` | Product name, description, copyright — fork-owned, one file |
-| Brand colors | `config/locales/en/brand.en.yml`'s visual twin: `app/assets/tailwind/tokens/_brand.css` | Optional — swap the primary palette family here; re-prove AAA in CI ([Theming](theming)) |
+| Brand colors | `config/locales/en/brand.en.yml`'s visual twin: `app/assets/tailwind/tokens/_brand.css` | Optional — swap the primary palette family here (the file's header says how); re-prove AAA in CI |
 | Brand mark | `app/views/shared/_site_mark.html.erb` (one `<svg>`, nothing else) + the icon set in `public/` | Replace wholesale; keep `fill="currentColor"`, `aria-hidden="true"`, and a `viewBox` with no width/height ([Extending](extending#customizing-the-site-logo)) |
 | Vocabulary | `config/vocabulary.local.yml` | Your names for workspace and project (singular + plural); every template string follows ([i18n](i18n#vocabulary)) |
 | Marketing copy | `config/locales/en/pages.en.yml` + `app/views/pages/` | Fork-owned — rewrite wholesale |
 | Operations pages | `app/helpers/operations/fork_nav_helper.rb` | Return your own operations pages as `[label, path]` pairs; the operations nav lists them after the template's, with the same current-page cue |
 | Languages | `config/application.rb` (`config.i18n.available_locales`) | Register a locale here *before* adding its files, or `I18n.t(locale:)` raises in production — see [Internationalization](i18n) |
 | PWA app name | `public/manifest.webmanifest` (`name` / `short_name`) | Shown on the home screen if users install the PWA |
-| CI image tags | `.github/workflows/ci.yml` + `image_scan.yml` (`tags:`) | Local-only build tags; cosmetic but confusing if stale |
+| CI image tags | `.github/workflows/docker_build.yml`, `image_scan.yml` + `hotcell_image_scan.yml` (`tags:`) | Local-only build tags; cosmetic but confusing if stale |
 | Devcontainer bundle-cache volume | `.devcontainer/devcontainer.json` | Optional; the invariant spec only checks the `bundle-cache` suffix |
-| Fork provenance | `.fork.yml` | Written by `bin/fork`: your name, tenancy preset, and the template commit you forked from. Committed so every clone inherits the decisions — `bin/setup` reads the preset. Two template invariants read it: the placeholder-support-address check runs only when it exists, and the check that `bin/fork`'s rename targets still exist upstream skips when it does. Everything else is derived from the repository |
+| Fork provenance | `.fork.yml` | Written by `bin/fork`: your name, tenancy preset, the template's URL, and the template commit you forked from. Committed so every clone inherits the decisions — `bin/setup` reads the preset and the template's URL, the app reads the preset at boot outside tests, and `bin/sync` and `bin/release` read the template's URL. The suite reads its presence as "this is a fork": it then runs the specs tagged `:fork_only` (today, the placeholder-support-address check) and leaves out those tagged `:template_only`, among them the check that `bin/fork`'s rename targets still exist upstream. Everything else is derived from the repository |
 | Session cookie key | optional `config/initializers/session_store.rb` | Only if multiple forks will share a cookie domain |
 
 Then verify nothing was missed:
@@ -306,7 +309,8 @@ bin/branch-rules          # one approval on every PR
 bin/branch-rules --solo   # no approval: you merge your own PRs
 ```
 
-It creates `next` from `main` and makes it the default branch, turns on
+It creates whichever of `main` and `next` is missing from the other (after
+`bin/fork`, that's `main`), makes `next` the default branch, turns on
 auto-merge (a PR, yours or an agent's, can be queued to merge once its checks
 pass; the rules still apply), then applies
 the rulesets in `config/github/rulesets/`. Under those rules, `next`,
@@ -351,7 +355,7 @@ on every sync.
 | `config/routes/app.rb` | Your product's routes (loaded by `draw(:app)`) |
 | `.rubocop/app.yml` | Your RuboCop overrides — turn a house cop off here, with the reason ([Getting started](getting-started#turning-a-house-cop-off-in-your-fork)) |
 | `config/markdowndocs_categories.local.yml` | Registers your own docs pages on this `/docs` index |
-| `app/assets/tailwind/tokens/_brand.css` | Brand-color overrides — swap the primary palette family ([Theming](theming)) |
+| `app/assets/tailwind/tokens/_brand.css` | Brand-color overrides — swap the primary palette family (the file's header says how) |
 | `app/views/shared/_site_mark.html.erb` | The brand mark — a file that is one `<svg>` ([Extending](extending#customizing-the-site-logo)) |
 | `public/icon.svg`, `public/icon.png`, `public/icon-192.png`, `public/icon-512.png`, `public/apple-touch-icon.png`, `public/favicon.ico` | The favicon and PWA icon set — same artwork, same filenames and sizes ([Getting started](getting-started#favicon-and-pwa-icons)) |
 | `config/vocabulary.local.yml` | Your product's nouns — any subset; `config/vocabulary.yml` fills the rest ([i18n](i18n#vocabulary)) |
@@ -515,7 +519,7 @@ brings it in, so run that one from the template's copy. It needs the
 git fetch upstream
 gem install release_flow
 d=$(mktemp -d); mkdir -p $d/bin $d/lib
-for f in bin/sync lib/clean_git_env.rb lib/github_origin.rb; do git show upstream/main:$f > $d/$f; done
+for f in bin/sync lib/clean_git_env.rb lib/github_origin.rb lib/fork_config.rb; do git show upstream/main:$f > $d/$f; done
 ruby -e "load '$d/bin/sync'; Sync.new(root: Dir.pwd).run"
 ```
 
