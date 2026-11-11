@@ -82,8 +82,8 @@ env:
 
     # SIGNUP_MODE: open   # default: invite_only. Read Open sign-up in /docs/developer/deployment first
 
-    # WORKSPACE_ON_SIGNUP: shared   # must match the preset bin/fork set
-    # TENANCY_SHARED_WORKSPACE_SLUG: your_app   # production refuses to boot on shared without it
+    # WORKSPACE_ON_SIGNUP: shared   # default: the preset bin/fork recorded in .fork.yml
+    # TENANCY_SHARED_WORKSPACE_SLUG: your_app   # default on shared: the name in .fork.yml
 
     # Outbound mail: the server here, its login in credentials (smtp.user_name, smtp.password).
     # Production refuses to boot without both. Recipes: /docs/developer/deployment.
@@ -155,6 +155,10 @@ builder:
   # secrets:
   #   - GITHUB_TOKEN
   #   - RAILS_MASTER_KEY
+
+# Prints bin/rails deploy:check's warnings on every deploy; Kamal hides a passing hook's output.
+hooks_output:
+  pre-build: verbose
 
 # Use a different ssh user than root
 # ssh:

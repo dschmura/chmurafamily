@@ -95,6 +95,16 @@ RSpec.describe "User#can_invite? — verified_at writer inventory", type: :reque
 
       expect(flash[:alert]).to eq(I18n.t("invitations.unverified_sender"))
     end
+
+    it "says why on a Turbo Stream submit too" do
+      sign_in(user)
+
+      post workspace_invitations_path(workspace),
+           params: { invitation: { emails: "someone@example.test", role_id: Role.system_default!("member").id } },
+           headers: { "Accept" => "text/vnd.turbo-stream.html" }
+
+      expect(flash[:alert]).to eq(I18n.t("invitations.unverified_sender"))
+    end
   end
 
   describe "the gate on onboarding, the fourth surface" do

@@ -124,10 +124,11 @@ RSpec.describe "Workspace Projects", type: :request do
     describe "POST /workspaces/:workspace_slug/projects" do
       it "creates a project and assigns creator role" do
         expect {
-          post workspace_projects_path(workspace), params: { project: { name: "New Project" } }
+          post workspace_projects_path(workspace), params: { project: { name: "New Project", description: "Client launch" } }
         }.to change(Project, :count).by(1)
 
         project = Project.find_by!(name: "New Project")
+        expect(project.description).to eq("Client launch")
         pm = project.project_memberships.find_by(user: user)
         expect(pm).to be_creator
         expect(flash[:notice]).to eq(I18n.t("workspaces.projects.create.success"))
@@ -180,8 +181,9 @@ RSpec.describe "Workspace Projects", type: :request do
       let(:project) { create(:project, workspace: workspace, created_by: user) }
 
       it "updates the project" do
-        patch workspace_project_path(workspace, project), params: { project: { name: "Updated" } }
+        patch workspace_project_path(workspace, project), params: { project: { name: "Updated", description: "New scope" } }
         expect(project.reload.name).to eq("Updated")
+        expect(project.description).to eq("New scope")
         expect(flash[:notice]).to eq(I18n.t("workspaces.projects.update.success"))
       end
     end

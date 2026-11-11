@@ -97,9 +97,12 @@ RSpec.describe ForkFlow do
     git("commit", "-qm", "template")
   end
 
-  def run_fork(opts = {})
-    flow = described_class.new(opts, root: repo.to_s)
-    allow(flow).to receive(:puts) # progress banners would read as real failures
+  let(:printed) { StringIO.new }
+
+  def terminal(typed = "") = StringIO.new(typed).tap { |io| io.define_singleton_method(:tty?) { true } }
+
+  def run_fork(opts = {}, input = StringIO.new)
+    flow = described_class.new(opts, root: repo.to_s, input:, output: printed)
     yield flow if block_given?
     silence_stdio { flow.run }
     flow
@@ -138,8 +141,7 @@ RSpec.describe ForkFlow do
 
   def with_fake_gh(&) = with_path(bin_dir.to_s, ENV["PATH"], &)
 
-  # The real git subprocesses write to fd 1 directly, so stubbing `puts` isn't
-  # enough — "[main abc123] Rename identity" lands in the suite's own output.
+  # Git subprocesses write to fd 1 directly, past the injected output.
   def silence_stdio
     original = STDOUT.dup
     STDOUT.reopen(File::NULL)
@@ -337,6 +339,13 @@ RSpec.describe ForkFlow do
       env = repo.join(".env").read
       expect(env).to include("WORKSPACE_ON_SIGNUP=shared")
       expect(env).to include("TENANCY_SHARED_WORKSPACE_SLUG=my_app")
+    end
+
+    it "says production reads the preset from .fork.yml, not from a variable to set by hand" do
+      run_fork(name: "my_app", preset: "shared", yes: true)
+
+      expect(printed.string).to include("production reads the preset from .fork.yml")
+      expect(printed.string).not_to include("production env")
     end
   end
 
@@ -698,15 +707,15 @@ RSpec.describe ForkFlow do
     it "says how to publish when --yes skipped GitHub" do
       install_fake_gh
 
-      flow = with_fake_gh { run_fork(name: "my_app", yes: true) }
+      with_fake_gh { run_fork(name: "my_app", yes: true) }
 
-      expect(flow).to have_received(:puts).with(%r{Not published to GitHub.*bin/fork --github OWNER})
+      expect(printed.string).to match(%r{Not published to GitHub.*bin/fork --github OWNER})
     end
 
     it "stays quiet about publishing under --no-github" do
-      flow = run_fork(name: "my_app", github: false, yes: true)
+      run_fork(name: "my_app", github: false, yes: true)
 
-      expect(flow).not_to have_received(:puts).with(/Not published/)
+      expect(printed.string).not_to include("Not published")
     end
 
     it "takes --github OWNER/NAME as the repo name" do
@@ -803,9 +812,7 @@ RSpec.describe ForkFlow do
       install_fake_gh
 
       with_fake_gh do
-        run_fork(name: "my_app") do |flow|
-          allow(flow).to receive(:interactive?).and_return(true)
-          allow(flow).to receive(:ask) { |_question, default| default }
+        run_fork({ name: "my_app" }, terminal) do |flow|
           allow(flow).to receive(:offer_setup!).and_return(false)
         end
       end
@@ -825,12 +832,10 @@ RSpec.describe ForkFlow do
 
     it "prints the GitHub steps under --dry-run without running them" do
       install_fake_gh
-      flow = nil
-
-      with_fake_gh { flow = run_fork(name: "my_app", github: "me", dry_run: true, yes: true) }
+      with_fake_gh { run_fork(name: "my_app", github: "me", dry_run: true, yes: true) }
 
       expect(gh_calls.grep(/repo create/)).to be_empty
-      expect(flow).to have_received(:puts).with(%r{would: create the GitHub repo me/my_app \(public\)})
+      expect(printed.string).to match(%r{would: create the GitHub repo me/my_app \(public\)})
     end
   end
 
@@ -902,9 +907,9 @@ RSpec.describe ForkFlow do
       install_fake_gh
       git("remote", "set-url", "origin", "git@github.com:me/my_app.git")
 
-      flow = with_fake_gh { run_fork(name: "my_app", yes: true) }
+      with_fake_gh { run_fork(name: "my_app", yes: true) }
 
-      expect(flow).to have_received(:puts).with(%r{Not pushed to origin.*bin/fork --github\z})
+      expect(printed.string).to match(%r{Not pushed to origin.*bin/fork --github$})
     end
 
     it "pushes and protects a forked repo whose origin has no rules yet, on rerun with --github" do
@@ -1083,8 +1088,7 @@ RSpec.describe ForkFlow do
       run_fork(name: "my_app", yes: true)
       repo.join("config/deploy.yml").write("service: modelrails_base\n")
 
-      flow = described_class.new({}, root: repo.to_s)
-      allow(flow).to receive(:puts)
+      flow = described_class.new({}, root: repo.to_s, output: printed)
 
       expect(flow.step_verify![:live]).to include("config/deploy.yml")
     end
@@ -1097,8 +1101,7 @@ RSpec.describe ForkFlow do
       FileUtils.mkdir_p(repo.join("graphify-out"))
       repo.join("graphify-out/graph.json").write(%({"f": "modelrails_base"}))
 
-      flow = described_class.new({}, root: repo.to_s)
-      allow(flow).to receive(:puts)
+      flow = described_class.new({}, root: repo.to_s, output: printed)
 
       expect(flow.step_verify!.values.flatten).not_to include("graphify-out/graph.json")
     end
@@ -1116,8 +1119,7 @@ RSpec.describe ForkFlow do
         service: my_app
       CSS
 
-      flow = described_class.new({}, root: repo.to_s)
-      allow(flow).to receive(:puts)
+      flow = described_class.new({}, root: repo.to_s, output: printed)
 
       expect(flow.step_verify![:live]).to be_blank
     end
@@ -1130,8 +1132,7 @@ RSpec.describe ForkFlow do
         service: my_app
       ERB
 
-      flow = described_class.new({}, root: repo.to_s)
-      allow(flow).to receive(:puts)
+      flow = described_class.new({}, root: repo.to_s, output: printed)
 
       expect(flow.step_verify![:live]).to be_blank
     end
@@ -1142,8 +1143,7 @@ RSpec.describe ForkFlow do
       run_fork(name: "my_app", yes: true)
       repo.join("config/deploy.yml").write("service: my_app\n# diverges from modelrails_ui's default\n")
 
-      flow = described_class.new({}, root: repo.to_s)
-      allow(flow).to receive(:puts)
+      flow = described_class.new({}, root: repo.to_s, output: printed)
 
       triage = flow.step_verify!
       expect(triage[:gem_reference]).to include("config/deploy.yml")
@@ -1156,8 +1156,7 @@ RSpec.describe ForkFlow do
       repo.join("theme.js").write("window.ModelRails = window.ModelRails || {};\nmodule ModelRails\n")
       git("add", ".rubocop.yml", "theme.js")
 
-      flow = described_class.new({}, root: repo.to_s)
-      allow(flow).to receive(:puts)
+      flow = described_class.new({}, root: repo.to_s, output: printed)
 
       triage = flow.step_verify!
       expect(triage[:template_namespace]).to contain_exactly(".rubocop.yml", "theme.js")
@@ -1169,8 +1168,7 @@ RSpec.describe ForkFlow do
       repo.join("theme.js").write(%(window.ModelRails.name = "modelrails_base";\n))
       git("add", "theme.js")
 
-      flow = described_class.new({}, root: repo.to_s)
-      allow(flow).to receive(:puts)
+      flow = described_class.new({}, root: repo.to_s, output: printed)
 
       expect(flow.step_verify![:live]).to include("theme.js")
     end
@@ -1179,8 +1177,7 @@ RSpec.describe ForkFlow do
       run_fork(name: "my_app", yes: true)
       repo.join("config/deploy.yml").write("# forked from modelrails_base\nservice: my_app\n")
 
-      flow = described_class.new({}, root: repo.to_s)
-      allow(flow).to receive(:puts)
+      flow = described_class.new({}, root: repo.to_s, output: printed)
 
       expect(flow.step_verify![:comment]).to include("config/deploy.yml")
     end
@@ -1215,207 +1212,238 @@ RSpec.describe ForkFlow do
     end
   end
 
-  # Shelling out is the behaviour here, so `system` is the right thing to stub —
-  # actually running bundle install and db:prepare inside an example would be
-  # absurd. (Contrast the git specs above, where repository state is the point
-  # and stubbing would prove nothing.)
+  # A fake shell: running bundle install and db:prepare inside an example would be absurd.
   describe "offering bin/setup" do
-    def flow_for(opts)
-      described_class.new(opts, root: repo.to_s).tap { |f| allow(f).to receive(:puts) }
+    let(:shell) { instance_double(ForkFlow::Shell, run: true) }
+
+    def flow_for(opts, input = terminal)
+      described_class.new(opts, root: repo.to_s, input:, output: printed, shell:)
     end
 
     it "does not offer under --yes, so scripts and orchestrators stay deterministic" do
-      flow = flow_for(name: "my_app", yes: true)
-      expect(flow).not_to receive(:system)
+      flow_for(name: "my_app", yes: true).offer_setup!
 
-      flow.offer_setup!
+      expect(shell).not_to have_received(:run)
     end
 
     it "does not offer when stdin is not a terminal" do
-      flow = flow_for(name: "my_app")
-      allow($stdin).to receive(:tty?).and_return(false)
-      expect(flow).not_to receive(:system)
+      flow_for({ name: "my_app" }, StringIO.new).offer_setup!
 
-      flow.offer_setup!
+      expect(shell).not_to have_received(:run)
     end
 
     it "does not offer under --dry-run" do
-      flow = flow_for(name: "my_app", dry_run: true)
-      allow($stdin).to receive(:tty?).and_return(true)
-      expect(flow).not_to receive(:system)
+      flow_for(name: "my_app", dry_run: true).offer_setup!
 
-      flow.offer_setup!
+      expect(shell).not_to have_received(:run)
     end
 
     context "when interactive" do
-      let(:flow) { flow_for(name: "my_app") }
-
-      before do
-        allow($stdin).to receive(:tty?).and_return(true)
-        allow(flow).to receive(:print)
-      end
+      def answering(typed) = flow_for({ name: "my_app" }, terminal(typed))
 
       # --skip-server matters: bin/setup ends with `exec bin/dev`, which would
       # replace this process and launch a server nobody asked for.
       it "runs bin/setup without starting the dev server when accepted" do
-        allow($stdin).to receive(:gets).and_return("\n") # bare Enter takes the default
+        answering("\n").offer_setup! # bare Enter takes the default
 
-        # The env hash is positionally first (#789): bin/setup shells git itself,
-        # so it must not inherit a GIT_DIR either.
-        expect(flow).to receive(:system)
-          .with(hash_including("GIT_DIR" => nil), "bin/setup", "--skip-server",
-                hash_including(chdir: repo.to_s))
-          .and_return(true)
-
-        flow.offer_setup!
+        expect(shell).to have_received(:run).with("bin/setup", "--skip-server")
       end
 
       it "does nothing when declined" do
-        allow($stdin).to receive(:gets).and_return("n\n")
-        expect(flow).not_to receive(:system)
+        answering("n\n").offer_setup!
 
-        flow.offer_setup!
+        expect(shell).not_to have_received(:run)
       end
 
       it "reports success when bin/setup ran and passed" do
-        allow($stdin).to receive(:gets).and_return("y\n")
-        allow(flow).to receive(:system).and_return(true)
-
-        expect(flow.offer_setup!).to be(true)
+        expect(answering("y\n").offer_setup!).to be(true)
       end
 
       it "reports no success when declined" do
-        allow($stdin).to receive(:gets).and_return("n\n")
-
-        expect(flow.offer_setup!).to be(false)
+        expect(answering("n\n").offer_setup!).to be(false)
       end
 
       it "reports no success when bin/setup fails" do
-        allow($stdin).to receive(:gets).and_return("y\n")
-        allow(flow).to receive(:system).and_return(false)
-        allow(flow).to receive(:say)
+        allow(shell).to receive(:run).and_return(false)
 
-        expect(flow.offer_setup!).to be(false)
+        expect(answering("y\n").offer_setup!).to be(false)
       end
 
       # The fork is committed before setup is even offered, so a setup failure
       # must not send anyone back to re-run bin/fork.
       it "reports that the fork itself is already committed when setup fails" do
-        allow($stdin).to receive(:gets).and_return("y\n")
-        allow(flow).to receive(:system).and_return(false)
+        allow(shell).to receive(:run).and_return(false)
 
-        messages = []
-        allow(flow).to receive(:say) { |m| messages << m }
+        answering("y\n").offer_setup!
 
-        flow.offer_setup!
-
-        expect(messages.join("\n")).to match(/already committed/i)
-        expect(messages.join("\n")).to match(/re-run bin\/setup/i)
+        expect(printed.string).to match(/already committed/i).and match(/re-run bin\/setup/i)
       end
     end
   end
 
   describe "#offer_mail_setup!" do
-    def flow_with_messages(opts = { name: "my_app" })
-      flow = described_class.new(opts, root: repo.to_s)
-      allow(flow).to receive(:puts)
-      messages = []
-      allow(flow).to receive(:say) { |message| messages << message }
-      allow(flow).to receive(:print)
-      [ flow, messages ]
-    end
+    let(:shell) { instance_double(ForkFlow::Shell, run: true) }
+
+    def flow_for(opts, input) = described_class.new(opts, root: repo.to_s, input:, output: printed, shell:)
 
     [ { yes: true }, { dry_run: true } ].each do |opts|
       it "doesn't ask under #{opts.keys.first}" do
-        flow, = flow_with_messages({ name: "my_app", **opts })
-        allow($stdin).to receive(:tty?).and_return(true)
-        expect($stdin).not_to receive(:gets)
-        expect(flow).not_to receive(:system)
+        input = terminal("y\n")
 
-        flow.offer_mail_setup!
+        flow_for({ name: "my_app", **opts }, input).offer_mail_setup!
+
+        expect(input.pos).to eq(0)
+        expect(shell).not_to have_received(:run)
       end
     end
 
     it "doesn't ask when stdin is not a terminal" do
-      flow, = flow_with_messages
-      allow($stdin).to receive(:tty?).and_return(false)
-      expect($stdin).not_to receive(:gets)
-      expect(flow).not_to receive(:system)
+      input = StringIO.new("y\n")
 
-      flow.offer_mail_setup!
+      flow_for({ name: "my_app" }, input).offer_mail_setup!
+
+      expect(input.pos).to eq(0)
+      expect(shell).not_to have_received(:run)
     end
 
     context "when interactive" do
-      before { allow($stdin).to receive(:tty?).and_return(true) }
+      def answering(typed) = flow_for({ name: "my_app" }, terminal(typed))
 
       it "treats a bare Enter as No, warns, and changes nothing" do
-        flow, messages = flow_with_messages
-        allow($stdin).to receive(:gets).and_return("\n")
-        expect(flow).not_to receive(:system)
+        answering("\n").offer_mail_setup!
 
-        flow.offer_mail_setup!
-
-        expect(messages.join).to include("production will refuse to boot", "bin/mail-setup", "development mail keeps working")
+        expect(shell).not_to have_received(:run)
+        expect(printed.string).to include("production will refuse to boot", "bin/mail-setup", "development mail keeps working")
         expect(capture_git("status", "--porcelain")).to eq("")
       end
 
       it "runs bin/mail-setup on a yes, without a warning when it succeeds" do
-        flow, messages = flow_with_messages
-        allow($stdin).to receive(:gets).and_return("y\n")
-        expect(flow).to receive(:system)
-          .with(hash_including("GIT_DIR" => nil), "bin/mail-setup", hash_including(chdir: repo.to_s))
-          .and_return(true)
+        answering("y\n").offer_mail_setup!
 
-        flow.offer_mail_setup!
-
-        expect(messages.join).not_to include("production will refuse to boot")
+        expect(shell).to have_received(:run).with("bin/mail-setup")
+        expect(printed.string).not_to include("production will refuse to boot")
       end
 
       it "warns when bin/mail-setup is declined or fails" do
-        flow, messages = flow_with_messages
-        allow($stdin).to receive(:gets).and_return("y\n")
-        allow(flow).to receive(:system).and_return(false)
+        allow(shell).to receive(:run).and_return(false)
 
-        flow.offer_mail_setup!
+        answering("y\n").offer_mail_setup!
 
-        expect(messages.join).to include("production will refuse to boot")
+        expect(printed.string).to include("production will refuse to boot")
       end
     end
   end
 
-  describe "the mail step in a fresh fork" do
-    it "lists bin/mail-setup in Next steps, even with --yes" do
-      flow = described_class.new({ name: "my_app", yes: true }, root: repo.to_s)
-      lines = []
-      allow(flow).to receive(:puts) { |line| lines << line }
-      silence_stdio { flow.run }
+  describe ForkFlow::GithubRepo do
+    it "lists the steps by hand, quietly, when told not to publish" do
+      todos = []
+      github = described_class.new(
+        { github: false }, root: repo.to_s, snake: "my_app", branch: "next", origin_present: false, todos:,
+        console: ForkFlow::Console.new(input: StringIO.new, output: printed, dry_run: false, yes: true),
+        shell: ForkFlow::Shell.new(root: repo.to_s, dry_run: false, output: printed)
+      )
 
-      expect(lines.join("\n")).to match(/Next steps.*bin\/mail-setup/m)
+      expect(github.publish).to be(false)
+      expect(todos.join).to include("git remote add origin git@github.com:YOU/my_app.git")
+      expect(printed.string).to be_empty
+    end
+  end
+
+  describe ForkFlow::Console do
+    def console(input, yes: false, dry_run: false) = described_class.new(input:, output: printed, yes:, dry_run:)
+
+    it "takes the default without asking under --yes" do
+      input = terminal("other\n")
+
+      expect(console(input, yes: true).ask("Name?", "my_app")).to eq("my_app")
+      expect(input.pos).to eq(0)
+    end
+
+    it "still prompts at a terminal under --dry-run, but isn't interactive" do
+      dry_run = console(terminal, dry_run: true)
+
+      expect([ dry_run.prompts?, dry_run.interactive? ]).to eq([ true, false ])
+    end
+  end
+
+  describe ForkFlow::Shell do
+    def shell(dry_run: false) = described_class.new(root: repo.to_s, dry_run:, output: printed)
+
+    it "clears an inherited GIT_DIR from what it runs" do
+      inherited = ENV["GIT_DIR"]
+      ENV["GIT_DIR"] = workdir.join("elsewhere").to_s
+
+      expect(shell.run("sh", "-c", 'test -z "$GIT_DIR"')).to be(true)
+    ensure
+      ENV["GIT_DIR"] = inherited
+    end
+
+    it "runs in the fork's root" do
+      shell.run("sh", "-c", "pwd -P > where.txt")
+
+      expect(repo.join("where.txt").read.strip).to eq(repo.realpath.to_s)
+    end
+
+    it "prints a command under --dry-run and runs nothing" do
+      shell(dry_run: true).run!("touch", "made.txt")
+
+      expect(repo.join("made.txt")).not_to exist
+      expect(printed.string).to include("$ touch made.txt")
+    end
+  end
+
+  describe "answering the questions" do
+    it "takes the preset from the input it is given" do
+      run_fork({ name: "my_app", github: false }, terminal("2\n")) do |flow|
+        allow(flow).to receive(:offer_setup!).and_return(false)
+      end
+
+      expect(repo.join(".env").read).to include("WORKSPACE_ON_SIGNUP=shared")
+    end
+  end
+
+  describe "the mail step in a fresh fork" do
+    it "sends the deploy to Fork to Served in Next steps" do
+      run_fork(name: "my_app", yes: true)
+
+      expect(printed.string).to match(%r{Next steps.*/docs/developer/quickstart}m)
+      expect(printed.string).not_to include("deploy-guide")
+    end
+
+    it "lists bin/mail-setup in Next steps, even with --yes" do
+      run_fork(name: "my_app", yes: true)
+
+      expect(printed.string).to match(/Next steps.*bin\/mail-setup/m)
     end
 
     it "lists bin/mail-setup under --dry-run" do
-      flow = described_class.new({ name: "my_app", yes: true, dry_run: true }, root: repo.to_s)
-      lines = []
-      allow(flow).to receive(:puts) { |line| lines << line }
-      silence_stdio { flow.run }
+      run_fork(name: "my_app", yes: true, dry_run: true)
 
-      expect(lines.join("\n")).to match(/Next steps.*bin\/mail-setup/m)
+      expect(printed.string).to match(/Next steps.*bin\/mail-setup/m)
     end
 
     it "doesn't offer mail when bin/setup didn't succeed" do
-      flow = described_class.new({ name: "my_app", yes: true }, root: repo.to_s)
-      allow(flow).to receive(:puts)
-      allow(flow).to receive(:offer_setup!).and_return(false)
-      expect(flow).not_to receive(:offer_mail_setup!)
-      silence_stdio { flow.run }
+      run_fork(name: "my_app", yes: true) do |flow|
+        allow(flow).to receive(:offer_setup!).and_return(false)
+        expect(flow).not_to receive(:offer_mail_setup!)
+      end
     end
 
     it "offers mail once bin/setup succeeded" do
-      flow = described_class.new({ name: "my_app", yes: true }, root: repo.to_s)
-      allow(flow).to receive(:puts)
-      allow(flow).to receive(:offer_setup!).and_return(true)
-      expect(flow).to receive(:offer_mail_setup!)
-      silence_stdio { flow.run }
+      run_fork(name: "my_app", yes: true) do |flow|
+        allow(flow).to receive(:offer_setup!).and_return(true)
+        expect(flow).to receive(:offer_mail_setup!)
+      end
+    end
+  end
+
+  describe "a hand-edited .fork.yml" do
+    it "names the file and the fix when it isn't valid YAML" do
+      run_fork(name: "my_app", yes: true)
+      repo.join(".fork.yml").write("name: [unclosed\n")
+      git("commit", "-qam", "break it")
+
+      expect { run_fork(yes: true) }.to raise_error(SystemExit).and output(/\.fork\.yml is not valid YAML.*Fix it by hand/m).to_stderr
     end
   end
 

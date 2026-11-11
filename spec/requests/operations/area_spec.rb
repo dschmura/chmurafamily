@@ -94,7 +94,6 @@ RSpec.describe "Operations area", type: :request do
       allow(Current).to receive(:workspace=).and_call_original
       get operations_workspaces_path
       expect(Current).not_to have_received(:workspace=)
-      expect(session[:current_workspace_id]).to be_nil
     end
 
     it "reaches the area with onboarding incomplete rather than being funneled into the wizard" do

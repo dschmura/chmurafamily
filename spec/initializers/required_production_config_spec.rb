@@ -188,6 +188,24 @@ RSpec.describe RequiredProductionConfig do
     end
   end
 
+  describe ".refusals" do
+    it "lists every refusal at once, in the order a boot meets them" do
+      refusals = described_class.refusals({ "OBJECT_STORAGE_BUCKET" => "app-backups" }, {}, {})
+
+      expect(refusals.map { |refusal| refusal.lines.first }).to match([
+        /RAILS_HOST is unset/, /SMTP_ADDRESS is unset/, /encryption keys are missing/, /OBJECT_STORAGE_REGION is unset/
+      ])
+    end
+
+    it "lists nothing for a configuration production boots on, backups off included" do
+      env = { "RAILS_HOST" => "app.humbledaisy.com", "SMTP_ADDRESS" => "smtp.postmarkapp.com" }
+      credentials = { smtp: { user_name: "token", password: "token" } }
+      keys = { primary_key: "p", deterministic_key: "d", key_derivation_salt: "s" }
+
+      expect(described_class.refusals(env, credentials, keys)).to be_empty
+    end
+  end
+
   describe "boot wiring" do
     let(:source) { Rails.root.join("config/initializers/required_production_config.rb").read }
 

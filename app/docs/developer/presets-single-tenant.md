@@ -73,9 +73,9 @@ The workspace switcher auto-hides under this preset because every user has exact
 
    | Variable | Required? | Example | Purpose |
    |---|---|---|---|
-   | `WORKSPACE_ON_SIGNUP` | yes | `shared` | Selects this preset |
+   | `WORKSPACE_ON_SIGNUP` | no, after `bin/fork --preset shared` | `shared` | Selects this preset; defaults to the preset in `.fork.yml` |
    | `TENANCY_WORKSPACE_CREATION` | yes | `disabled` | Turns off "New workspace" UI + route — operators included; a second workspace on a single-tenant instance means flipping the flag or a console one-liner |
-   | `TENANCY_SHARED_WORKSPACE_SLUG` | yes | `acme` | URL-safe slug of the shared workspace |
+   | `TENANCY_SHARED_WORKSPACE_SLUG` | no, after `bin/fork --preset shared` | `acme` | URL-safe slug of the shared workspace; defaults to the name in `.fork.yml` |
    | `TENANCY_SHARED_WORKSPACE_NAME` | no | `Acme Inc.` | Display name (defaults to titleized slug) |
    | `TENANCY_OWNER_EMAIL` | yes | `admin@acme.com` | Email of the initial Owner |
    | `TENANCY_OWNER_FIRST_NAME` | no | `Admin` | Display first name (default `Workspace`) |

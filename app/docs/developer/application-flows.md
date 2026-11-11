@@ -269,7 +269,7 @@ Five concepts the flows plug into — knowing these is usually enough to avoid f
 <summary>Why it's shaped this way</summary>
 
 - **Client access** — Per-project opt-in (`clientside_enabled`), off by default. Nothing is exposed until a team explicitly turns it on.
-- **Share a resource** — `client_visible?` = `shared_with_client` **and** `published`. Publishing is the readiness gate, so a shared *draft* never leaks.
+- **Share a resource** — `Project#client_visible_resources` = not deleted, `shared_with_client` **and** `published`. Publishing is the readiness gate, so a shared *draft* never leaks.
 - **Invite a client** — Reuses the hardened invitation path (`accept!` / `consume!` with the `EmailMismatch` guard) but creates a `ClientAccess`, not a `Membership`.
 - **Client area** — `ClientAccess` is a separate axis: clients consume no seat, never enter Pundit workspace policies, and the area never sets `Current.workspace`. They see only shared-and-published items.
 </details>

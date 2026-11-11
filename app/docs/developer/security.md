@@ -550,7 +550,7 @@ Projects can be opened to external clients via the `Clientside::` area. This is 
 
 ### Visibility scope
 
-Clients can only see resources that are **both** published and explicitly shared: `Resource#client_visible?` returns `true` only when `shared_with_client? && published?`. Nothing else in the workspace is accessible — no other projects, no member lists, no workspace settings.
+Clients can only see resources that are published, explicitly shared and not deleted: both the client list and a single resource are looked up through `Project#client_visible_resources`. Nothing else in the workspace is accessible — no other projects, no member lists, no workspace settings.
 
 ### Client invitation bearer-token protection
 

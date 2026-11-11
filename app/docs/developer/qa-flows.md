@@ -103,7 +103,7 @@ Or run `bin/rails db:seed` if you configured the shared-preset seed variables.
 ### Edge cases — Invitations
 
 - **Single-use.** After a successful claim, clicking the same accept link again shows an "expired or used" alert and redirects to `root_path`.
-- **Expired invitation.** Invitations expire after **7 days** (set at creation: `expires_at: 7.days.from_now`). Attempting to accept an expired invitation shows the same "expired or used" alert.
+- **Expired invitation.** Invitations expire after **7 days** (`Invitation::LIFETIME`, set at creation). Attempting to accept an expired invitation shows the same "expired or used" alert.
 - **Email-bound.** An invitation addressed to `alice@example.com` cannot be claimed by a signed-in user whose email is `bob@example.com` — `Invitation::EmailMismatch` is raised and the flow aborts with an alert.
 - **Race (already consumed).** If two requests attempt to accept the same invitation simultaneously, `Invitation#accept!` acquires a lock; the loser raises `NotAcceptable`.
 
@@ -390,7 +390,7 @@ This step only appears when the registry has more than one toggleable tool.
 
 ### Client area — what the client sees
 
-Once in the client area the client user sees only their accessible projects (`clientside_projects_path`). Within a project they can view resources that are `client_visible?` (`Clientside::Projects::ResourcesController#show`). They cannot reach any workspace-scoped routes — `Clientside::BaseController` resolves projects exclusively through `Current.user.client_accesses.kept`, not through workspace membership.
+Once in the client area the client user sees only their accessible projects (`clientside_projects_path`). Within a project they can view resources in `Project#client_visible_resources` (`Clientside::Projects::ResourcesController#show`). They cannot reach any workspace-scoped routes — `Clientside::BaseController` resolves projects exclusively through `Current.user.client_accesses.kept`, not through workspace membership.
 
 ### Edge cases — Client invite
 

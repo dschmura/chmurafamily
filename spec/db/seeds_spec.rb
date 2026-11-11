@@ -8,7 +8,6 @@ require "rails_helper"
 RSpec.describe "db/seeds.rb :shared bootstrap", type: :request do
   let(:env_vars) do
     {
-      "TENANCY_SHARED_WORKSPACE_SLUG" => "acme",
       "TENANCY_SHARED_WORKSPACE_NAME" => "Acme Inc",
       "TENANCY_OWNER_EMAIL" => "owner@acme.test",
       "APP_HOST" => "acme.example.com"
@@ -24,6 +23,7 @@ RSpec.describe "db/seeds.rb :shared bootstrap", type: :request do
 
   before do
     allow(TenancyConfig).to receive(:shared?).and_return(true)
+    allow(TenancyConfig).to receive(:shared_workspace_slug).and_return("acme")
     allow(Rails).to receive(:env).and_return(ActiveSupport::StringInquirer.new("production"))
   end
 

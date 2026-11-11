@@ -18,20 +18,29 @@ module RequiredProductionConfig
 
   def self.check!(env = ENV, credentials = Rails.application.credentials,
                   encryption = Rails.application.config.active_record.encryption, logger: Rails.logger)
-    check_host!(env)
-    check_mail!(env, credentials)
-    check_encryption_keys!(credentials, encryption)
-    check_backups!(env, credentials, logger)
+    refusal = refusals(env, credentials, encryption).first
+    raise refusal if refusal
+    return unless backups_off?(env)
+
+    logger.warn("Backups are off: nothing copies the database or uploaded files anywhere. " \
+      "Set BACKUP_PATH (a folder) or OBJECT_STORAGE_BUCKET (a bucket); /docs/developer/deployment (Back up the database section).")
   end
 
-  def self.check_backups!(env, credentials, logger)
-    if env.values_at("BACKUP_PATH", "OBJECT_STORAGE_BUCKET").all? { |value| value.to_s.strip.empty? }
-      return logger.warn("Backups are off: nothing copies the database or uploaded files anywhere. " \
-        "Set BACKUP_PATH (a folder) or OBJECT_STORAGE_BUCKET (a bucket); /docs/developer/deployment (Back up the database section).")
-    end
+  # Every refusal, in the order a boot meets them, so a check before deploying can list them all.
+  def self.refusals(env = ENV, credentials = Rails.application.credentials,
+                    encryption = Rails.application.config.active_record.encryption)
+    [ host_refusal(env), mail_refusal(env, credentials), encryption_refusal(credentials, encryption),
+      backups_refusal(env, credentials) ].compact
+  end
+
+  def self.backups_off?(env) = env.values_at("BACKUP_PATH", "OBJECT_STORAGE_BUCKET").all? { |value| value.to_s.strip.empty? }
+
+  def self.backups_refusal(env, credentials)
+    return if backups_off?(env)
+
     problem = backups_problem(env, credentials) or return
 
-    raise <<~MSG
+    <<~MSG
       Production preflight failed: #{problem}.
 
       A half-configured backup destination boots, /up reports healthy, and every
@@ -58,12 +67,12 @@ module RequiredProductionConfig
     blank = %i[access_key_id secret_access_key].select { |key| credentials.dig(:object_storage, key).to_s.strip.empty? }.map { |key| "object_storage.#{key}" }
     "#{blank.to_sentence} #{blank.one? ? "is" : "are"} unset in credentials" if blank.any?
   end
-  private_class_method :backups_problem
+  private_class_method :backups_problem, :backups_refusal
 
-  def self.check_mail!(env, credentials)
+  def self.mail_refusal(env, credentials)
     problem = mail_problem(env, credentials) or return
 
-    raise <<~MSG
+    <<~MSG
       Production preflight failed: #{problem}.
 
       Sign-in is an email. Without a mail server it can log in to, the app boots,
@@ -87,13 +96,13 @@ module RequiredProductionConfig
     blank = %i[user_name password].select { |key| credentials.dig(:smtp, key).to_s.strip.empty? }.map { |key| "smtp.#{key}" }
     "#{blank.to_sentence} #{blank.one? ? "is" : "are"} unset in credentials" if blank.any?
   end
-  private_class_method :mail_problem
+  private_class_method :mail_problem, :mail_refusal
 
-  def self.check_host!(env)
+  def self.host_refusal(env)
     host = env["RAILS_HOST"].to_s.strip
     return unless host.empty? || PLACEHOLDER_HOST.match?(host)
 
-    raise <<~MSG
+    <<~MSG
       Production preflight failed: RAILS_HOST is #{host.empty? ? "unset" : host.inspect}.
 
       Every mailer link (magic links, password resets, invitations) is built from
@@ -110,13 +119,13 @@ module RequiredProductionConfig
     MSG
   end
 
-  def self.check_encryption_keys!(credentials, encryption)
+  def self.encryption_refusal(credentials, encryption)
     missing = ENCRYPTION_KEYS.reject do |key|
       encryption[key].present? || credentials.dig(:active_record_encryption, key).present?
     end
     return if missing.empty?
 
-    raise <<~MSG
+    <<~MSG
       Production preflight failed: Active Record encryption keys are missing
       (#{missing.map { |key| "active_record_encryption.#{key}" }.join(", ")}).
 
@@ -131,6 +140,7 @@ module RequiredProductionConfig
       Opting out for good: git rm config/initializers/required_production_config.rb
     MSG
   end
+  private_class_method :host_refusal, :encryption_refusal
 end
 
 # SECRET_KEY_BASE_DUMMY marks build-time boots (the Dockerfile's
