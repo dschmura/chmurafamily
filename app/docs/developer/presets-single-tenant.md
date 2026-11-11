@@ -8,7 +8,7 @@ keywords: single-tenant preset shared workspace internal tool owner bootstrap se
 
 # Single-tenant
 
-**What it is.** One shared workspace, no personal workspaces, the tenancy UI suppressed. Every authenticated user is a member of the same workspace; new signups land there automatically. There is no workspace switcher, no "New workspace" UI, and no way for users to create additional workspaces.
+**What it is.** One shared workspace, no personal workspaces, the tenancy UI suppressed. Every authenticated user is a member of the same workspace; new signups land there automatically. The workspace switcher names that workspace and lists no other; there is no "New workspace" UI and no way for users to create additional workspaces.
 
 **Who it's for.** Internal company tools, one-org deployments, classroom/cohort tools with central administration — any product where "the workspace" is implicit and there's no need to expose tenancy as a user-facing concept.
 
@@ -61,11 +61,11 @@ Everyone shares **one** workspace. Each person (with how they **sign in**) is a 
 | `signup.mode` | typically `:invite_only` (your call) | `config/initializers/signup.rb` |
 | `tenancy.onboarding` | `:shared` | `User#onboard_workspace` dispatches to `join_shared_workspace` |
 | `tenancy.workspace_creation` | `:disabled` | `RequiresWorkspaceCreationEnabled` (included by `WorkspacesController` and `Operations::WorkspacesController`) redirects `:new`/`:create` — operators included; a second workspace on a single-tenant instance means flipping the flag or a console one-liner |
-| `permitted_join_strategies` | `[:invite]` *(implicit — only mechanism built)* | `Invitation.consume!` is the single membership-grant path |
+| `permitted_join_strategies` | `[:invite]` (default — `SIGNUP_PERMITTED_JOIN_STRATEGIES`) | `Invitation.consume!` is the single membership-grant path |
 | `session.reauth_enabled` | `false` *(optional — your call)* | `config/initializers/sessions.rb`; internal tools often skip the "confirm it's you" interstitial |
 | `session.new_device_notification` | `false` *(optional — your call)* | same file; skips "new sign-in" alerts when every teammate's laptop would fire one |
 
-The workspace switcher auto-hides under this preset because every user has exactly one membership (the existing #145 "hide personal from switcher" logic plus the single-membership-no-switcher rule combine naturally — no extra suppression needed).
+The workspace switcher stays, naming the shared workspace: with one membership its menu lists no other workspace, only "All workspaces", so no extra suppression is needed.
 
 **Setup steps.**
 
@@ -91,9 +91,9 @@ The workspace switcher auto-hides under this preset because every user has exact
    bin/rails tenancy:owner_setup_link
    ```
 
-   This prints a fresh, short-lived password-set URL — the expiry clock starts when you run it, not at deploy time. Deliver it to the Owner out-of-band (or run it yourself if you're claiming the account). It doubles as a break-glass Owner login if email delivery is ever down.
+   This prints a fresh sign-in link, valid for 15 minutes — the expiry clock starts when you run it, not at deploy time. Deliver it to the Owner out-of-band (or run it yourself if you're claiming the account). It doubles as a break-glass Owner login if email delivery is ever down.
 
-4. The Owner opens the password-set link, sets a password, signs in. They can then invite other users via the normal invitation flow — **each invitation specifies the role the invitee receives** (Member, Admin, etc.). The Owner remains the single source of new-role-granting authority for the shared workspace; roles can also be changed after signup via the members UI at `/workspaces/:slug/members`.
+4. The Owner opens the link, which signs them in (with `AUTH_PASSWORDS=enabled` it opens the set-password form first). They can then invite other users via the normal invitation flow — **each invitation specifies the role the invitee receives** (Member, Admin, etc.). The Owner remains the single source of new-role-granting authority for the shared workspace; roles can also be changed after signup via the members UI at `/workspaces/:slug/members`.
 
 > **Re-inviting under `:shared` updates the role, it doesn't error.** Because `:shared` onboarding pre-creates a placeholder membership for every new user, `Workspace#admit` *reconciles* — admitting an existing member to a new role updates their role rather than raising "already a member" (the behavior you'd get under the default `:personal` posture). So re-inviting someone at a higher role is a valid way to promote them.
 
@@ -115,9 +115,9 @@ owner.personal_workspace_id                    # => nil
 owner.memberships.first.role.slug              # => "owner"
 ```
 
-In the browser, after the Owner has set their password and signed in:
+In the browser, after the Owner has signed in:
 
-1. They land directly in the shared workspace (no chooser).
+1. They land on the home page; **Go to your workspaces** lists only the shared workspace.
 2. The workspace switcher at the top of the sidebar names the shared workspace and their role; its menu lists no other workspace — only "All workspaces".
 3. `/workspaces/new` redirects to root with the alert `Workspace creation is disabled on this instance.`
 4. Invited new users (via the standard invitation flow) verify their email and become Members of the same shared workspace.
@@ -125,9 +125,9 @@ In the browser, after the Owner has set their password and signed in:
 **When to switch presets.**
 
 - *"Users should each get their own personal workspace; this is too restrictive."* → **[Solo-default](/docs/developer/presets-solo)**.
-- *"Each customer should have their own workspace, and signup should be public."* → **[Open SaaS](/docs/developer/presets-open-saas)** (Reshape 2+).
+- *"Each customer should have their own workspace, and signup should be public."* → **[Open SaaS](/docs/developer/presets-open-saas)**.
 
 ## Next steps
 
-- **[← Compare all presets](/docs/developer/presets)** — the decision matrix and the other two shapes.
+- **[← Compare all presets](/docs/developer/presets)** — the decision matrix and the other three shapes.
 - **[Extending ModelRails →](/docs/developer/extending)** — add your own workspace-scoped features on top of this preset.
