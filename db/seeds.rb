@@ -2,18 +2,13 @@
 # for seeds and every request-time Role.system_default! lookup.
 Role::SYSTEM_DEFAULTS.each_key { |slug| Role.system_default!(slug) }
 
-# --- Single-tenant preset bootstrap ----------------------------------------
-#
-# When TENANCY_ONBOARDING=shared, seed the shared workspace + the initial
-# Owner so the deployment is usable on first boot. Idempotent — safe to re-run.
-# See app/docs/developer/presets.md for the contract.
+# Under the shared preset, seed the shared workspace and its first Owner so the app works on first boot.
+# Idempotent. The slug is the one the app resolved, which a fork's .fork.yml supplies by default.
 if TenancyConfig.shared?
-  slug = ENV.fetch("TENANCY_SHARED_WORKSPACE_SLUG") {
-    raise "TENANCY_SHARED_WORKSPACE_SLUG is required when TENANCY_ONBOARDING=shared"
-  }
+  slug = TenancyConfig.shared_workspace_slug
   name = ENV.fetch("TENANCY_SHARED_WORKSPACE_NAME", slug.titleize)
   owner_email = ENV.fetch("TENANCY_OWNER_EMAIL") {
-    raise "TENANCY_OWNER_EMAIL is required when TENANCY_ONBOARDING=shared"
+    raise "TENANCY_OWNER_EMAIL is required when WORKSPACE_ON_SIGNUP=shared"
   }
 
   workspace = Workspace.find_or_create_by!(slug: slug) do |w|
