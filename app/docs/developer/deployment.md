@@ -1075,6 +1075,20 @@ Steps 2 and 5 of [First deploy](#first-deploy) cover these:
 
 `config/initializers/required_production_config.rb` refuses to boot a production process when `RAILS_HOST` is unset or still a placeholder (`example.com`, anything ending in `.example`), when `SMTP_ADDRESS` is unset, `localhost` or a placeholder, or the credentials' `smtp.user_name` or `smtp.password` is blank (see [Configure outbound mail](#4-configure-outbound-mail)), when the Active Record encryption keys are missing from the production credentials, or when a backup bucket is half configured or set alongside `BACKUP_PATH` ([Back up the database](#back-up-the-database)). With no backup destination at all it boots and logs that backups are off. The reason it refuses rather than warns: every mailer link — magic links, password resets, invitations — is generated from `RAILS_HOST`, and DNS-rebinding protection (`config.hosts`) is derived from it. With a placeholder value the app boots, `/up` reports healthy, and nobody can sign in. Missing encryption keys fail the same way — healthy `/up`, then the first read of a user raises. A failed boot is the only version of either failure you can see. Keys: `bin/rails db:encryption:init`, pasted into `bin/rails credentials:edit --environment production` ([Forking](/docs/developer/forking#bootstrap-secrets-and-configuration)).
 
+**Before you deploy**, `bin/rails deploy:check` applies the same rules on your
+machine and lists every one that fails, not only the first. It reads
+`config/deploy.yml` and the production credentials, and adds what a deploy needs
+that the guard can't see:
+
+- credentials it can't open
+- no `proxy:` with `ssl: true` while production forces HTTPS
+- a shared preset with no `TENANCY_OWNER_EMAIL`
+
+It warns, without stopping anything, when backups are off or `servers:` still
+lists the template's placeholder address. `DESTINATION=staging` checks staging.
+`.kamal/hooks/pre-build` runs it before every image build, so a deploy that would
+fail stops there.
+
 Rules the guard follows:
 
 - **Deterministic checks only** — unset, or a value that can never have been a working deployment (`example.com` is IANA-reserved per RFC 2606; `.example` is the TLD `bin/fork` substitutes into placeholders — neither can ever be a real host). A configuration that served traffic yesterday can never fail a restart today. Heuristic placeholder sweeps belong in `bin/fork` and CI, not in a boot-time guard.

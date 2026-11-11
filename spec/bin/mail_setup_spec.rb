@@ -1000,7 +1000,7 @@ RSpec.describe MailSetup do
         "config/credentials/production.key", 'labelled "my_app"',
         "git diff, git show, git log -p and git commit -v",
         "Before you deploy",
-        "RAILS_HOST", "bin/rails db:encryption:init", "backup destination", "Production preflight",
+        "bin/rails deploy:check", "RAILS_HOST", "encryption keys",
         "verified", "Fork to Served, /docs/developer/quickstart",
         "After you deploy",
         "bin/kamal console", "User.create!", "an address with no account gets no email",
