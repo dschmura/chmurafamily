@@ -35,7 +35,6 @@ Each project has a `clientside_enabled` boolean (default `false`). Team members 
 
 `Resource` gains a `shared_with_client` boolean. The team checks "Share with the client side" on a resource's edit form (the checkbox is only shown when Clientside is enabled on the project).
 
-- `Resource#client_visible?` — `shared_with_client? && published?`
 - `Project#client_visible_resources` — `resources.kept.published.where(shared_with_client: true).positioned`
 
 A resource must be both shared **and** published to appear in the client area.
@@ -79,7 +78,7 @@ The `Clientside::` controller namespace hosts the read-only client experience:
   - `show` — renders `@project.client_visible_resources` (read-only)
 
 - **`Clientside::Projects::ResourcesController`**
-  - `show` — renders a single resource, gated by `Resource#client_visible?`
+  - `show` — renders a single resource, looked up through `@project.client_visible_resources`
 
 ## Routing client-only users home
 

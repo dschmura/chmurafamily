@@ -14,7 +14,11 @@ class Invitation < ApplicationRecord
   include Issuance
   include Acceptance
 
+  LIFETIME = 7.days
+
   enum :status, { pending: "pending", accepted: "accepted", declined: "declined", revoked: "revoked" }, default: "pending"
+
+  before_validation :set_expiry, on: :create
 
   validates :role, presence: true, unless: :client_invite?
   validates :invited_by, presence: true
@@ -61,7 +65,7 @@ class Invitation < ApplicationRecord
     while_still_pending! do
       update!(
         token: SecureRandom.urlsafe_base64(32),
-        expires_at: 7.days.from_now
+        expires_at: LIFETIME.from_now
       )
     end
   end
@@ -114,6 +118,10 @@ class Invitation < ApplicationRecord
 
   def generate_token
     self.token = SecureRandom.urlsafe_base64(32)
+  end
+
+  def set_expiry
+    self.expires_at ||= LIFETIME.from_now
   end
 
   # Never the ambient Current.workspace — acceptance can happen from another workspace's page.

@@ -31,6 +31,14 @@ RSpec.describe "Clientside resources", type: :request do
     expect(flash[:alert]).to eq(I18n.t("clientside.area.resource_unavailable"))
   end
 
+  it "refuses a deleted resource" do
+    deleted = create(:resource, project: project, status: "published", shared_with_client: true)
+    deleted.discard!
+    get clientside_project_resource_path(project, deleted)
+    expect(response).to redirect_to(clientside_project_path(project))
+    expect(flash[:alert]).to eq(I18n.t("clientside.area.resource_unavailable"))
+  end
+
   it "refuses access for a non-client" do
     # Pin a distinctive name so the slug can't collide with the client's own
     # accessible project. Project slugs are only unique per workspace, and both

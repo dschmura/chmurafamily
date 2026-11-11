@@ -470,6 +470,8 @@ RSpec.describe "Workspace Members", type: :request do
       it "reactivates the member" do
         post workspace_member_reactivation_path(workspace, target_membership)
         expect(target_membership.reload).not_to be_discarded
+        expect(response).to redirect_to(workspace_members_path(workspace))
+        expect(flash[:notice]).to eq(I18n.t("workspaces.members.reactivations.create.reactivated"))
       end
     end
 

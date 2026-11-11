@@ -19,8 +19,25 @@ RSpec.describe Invitation, type: :model do
     end
 
     it "requires expires_at" do
-      invitation = build(:invitation, expires_at: nil)
+      invitation = create(:invitation)
+      invitation.expires_at = nil
       expect(invitation).not_to be_valid
+    end
+  end
+
+  describe "expiry" do
+    it "expires a lifetime after creation when no expiry is given" do
+      freeze_time do
+        invitation = create(:invitation, expires_at: nil)
+        expect(invitation.expires_at).to eq(Invitation::LIFETIME.from_now)
+      end
+    end
+
+    it "keeps an expiry it is given" do
+      freeze_time do
+        invitation = create(:invitation, expires_at: 2.days.from_now)
+        expect(invitation.expires_at).to eq(2.days.from_now)
+      end
     end
   end
 

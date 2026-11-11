@@ -1,0 +1,319 @@
+require "rails_helper"
+require "tmpdir"
+
+# Every fixture lives in a temp root, and every key is generated here: the check never meets a real one.
+RSpec.describe DeployCheck do
+  around do |example|
+    inherited = ENV.to_h.slice("RAILS_MASTER_KEY", "KAMAL_DESTINATION")
+    ENV.delete("RAILS_MASTER_KEY")
+    Dir.mktmpdir do |dir|
+      @root = Pathname.new(dir)
+      example.run
+    end
+  ensure
+    %w[RAILS_MASTER_KEY KAMAL_DESTINATION].each { |name| ENV[name] = inherited[name] }
+  end
+
+  let(:ready_env) { { "RAILS_HOST" => "app.acme.test", "SMTP_ADDRESS" => "smtp.postmarkapp.com", "BACKUP_PATH" => "/backups" } }
+  let(:ready_credentials) do
+    { "smtp" => { "user_name" => "token", "password" => "token" },
+      "active_record_encryption" => { "primary_key" => "p", "deterministic_key" => "d", "key_derivation_salt" => "s" } }
+  end
+  let(:template) { Rails.root }
+
+  def write(path, content) = @root.join(path).tap { |file| file.dirname.mkpath }.write(content)
+
+  def deploy(env: ready_env, proxy: { "ssl" => true, "host" => "app.acme.test" }, hosts: [ "203.0.113.10" ], secret: [ "RAILS_MASTER_KEY" ])
+    config = { "service" => "acme", "image" => "acme", "registry" => { "server" => "localhost:5555" }, "builder" => { "arch" => "amd64" },
+               "servers" => { "web" => { "hosts" => hosts } }, "env" => { "clear" => env, "secret" => secret } }
+    config["proxy"] = proxy if proxy
+    write("config/deploy.yml", config.to_yaml)
+  end
+
+  def secrets(content = template.join(".kamal/secrets").read, name: "secrets") = write(".kamal/#{name}", content)
+
+  def credentials(content = ready_credentials, name: "production", content_path: "config/credentials/#{name}.yml.enc", key_path: "config/credentials/#{name}.key")
+    key = ActiveSupport::EncryptedFile.generate_key
+    write(key_path, key)
+    ActiveSupport::EncryptedConfiguration.new(
+      config_path: @root.join(content_path), key_path: @root.join(key_path), env_key: "RAILS_MASTER_KEY", raise_if_missing_key: true
+    ).write(content.to_yaml)
+    key
+  end
+
+  def force_ssl(on) = write("config/environments/production.rb", "Rails.application.configure do\n  config.force_ssl = #{on}\nend\n")
+
+  def check(destination = nil) = described_class.new(root: @root, destination:)
+
+  def headlines(list) = list.map { |item| item.lines.first }
+
+  before do
+    force_ssl(true)
+    secrets
+  end
+
+  it "passes a configuration production boots on" do
+    deploy
+    credentials
+
+    expect(check.refusals).to be_empty
+    expect(check.warnings).to be_empty
+  end
+
+  it "lists every boot-guard refusal at once" do
+    deploy(env: { "OBJECT_STORAGE_BUCKET" => "app-backups" })
+    credentials({})
+
+    expect(headlines(check.refusals))
+      .to contain_exactly(/RAILS_HOST is unset/, /SMTP_ADDRESS is unset/, /encryption keys are missing/, /OBJECT_STORAGE_REGION is unset/)
+  end
+
+  describe "reading the deploy as Kamal does" do
+    before { credentials }
+
+    it "checks a secret's value from .kamal/secrets, under the alias env.secret gives it" do
+      deploy(env: ready_env.except("RAILS_HOST"), secret: %w[RAILS_MASTER_KEY RAILS_HOST:PROD_HOST])
+      secrets("#{template.join('.kamal/secrets').read}\nPROD_HOST=app.acme.test\n")
+
+      expect(check.refusals).to be_empty
+
+      secrets("#{template.join('.kamal/secrets').read}\nPROD_HOST=app.example.com\n")
+
+      expect(headlines(check.refusals)).to contain_exactly(/RAILS_HOST is "app.example.com"/)
+    end
+
+    it "follows YAML anchors and ERB" do
+      write("config/deploy.yml", <<~YAML)
+        service: acme
+        image: acme
+        registry: { server: localhost:5555 }
+        builder: { arch: amd64 }
+        servers: { web: { hosts: [ 203.0.113.10 ] } }
+        x-mail: &mail
+          SMTP_ADDRESS: smtp.postmarkapp.com
+        env:
+          secret: [ RAILS_MASTER_KEY ]
+          clear:
+            <<: *mail
+            RAILS_HOST: <%= "app.acme" + ".test" %>
+            BACKUP_PATH: /backups
+        proxy: { ssl: true, host: app.acme.test }
+      YAML
+
+      expect(check.refusals).to be_empty
+    end
+
+    it "checks each role with the env Kamal starts it with, listing a refusal they share once" do
+      deploy(env: ready_env.except("RAILS_HOST", "SMTP_ADDRESS"))
+      config = YAML.load_file(@root.join("config/deploy.yml"))
+      config["servers"]["web"]["env"] = { "clear" => { "RAILS_HOST" => "app.acme.test" } }
+      config["servers"]["job"] = { "hosts" => [ "203.0.113.11" ], "cmd" => "bin/jobs", "env" => { "clear" => { "RAILS_HOST" => "app.example.com" } } }
+      write("config/deploy.yml", config.to_yaml)
+
+      expect(headlines(check.refusals)).to contain_exactly(/RAILS_HOST is "app.example.com"/, /SMTP_ADDRESS is unset/)
+    end
+
+    it "opens the credentials with the key .kamal/secrets fetches, from a password manager or anywhere else" do
+      key = @root.join("config/credentials/production.key").read
+      @root.join("config/credentials/production.key").delete
+      write("vault/production.key", key)
+      secrets("RAILS_MASTER_KEY=$(cat vault/production.key)\n")
+      deploy
+
+      expect(check.refusals).to be_empty
+    end
+
+    it "refuses with Kamal's own message when Kamal can't read the deploy" do
+      deploy(secret: %w[RAILS_MASTER_KEY SMTP_PASSWORD])
+
+      expect(check.refusals).to contain_exactly(a_string_including("Kamal can't read", "SMTP_PASSWORD"))
+      expect(check.warnings).to be_empty
+    end
+  end
+
+  describe "where the credentials are" do
+    it "falls back to config/credentials.yml.enc and config/master.key, as production does" do
+      deploy
+      credentials(content_path: "config/credentials.yml.enc", key_path: "config/master.key")
+      secrets("RAILS_MASTER_KEY=$(cat config/master.key)\n")
+
+      expect(check.refusals).to be_empty
+    end
+
+    it "checks a destination with its merged settings and its own credentials" do
+      deploy
+      credentials({}, name: "production")
+      write("config/deploy.staging.yml", { "env" => { "clear" => { "RAILS_CREDENTIALS_ENV" => "staging" } } }.to_yaml)
+      secrets(template.join(".kamal/secrets.staging").read, name: "secrets.staging")
+      credentials(name: "staging")
+
+      expect(check("staging").refusals).to be_empty
+    end
+  end
+
+  describe "credentials it can't read" do
+    before { deploy }
+
+    it "says when the credentials file doesn't exist" do
+      expect(check.refusals.join).to include("config/credentials/production.yml.enc doesn't exist", "bin/mail-setup")
+    end
+
+    it "still checks the settings in config/deploy.yml, and only those" do
+      deploy(env: ready_env.except("RAILS_HOST"))
+
+      expect(headlines(check.refusals)).to contain_exactly(/production.yml.enc doesn't exist/, /RAILS_HOST is unset/)
+    end
+
+    it "says where the key goes when there is none" do
+      credentials
+      @root.join("config/credentials/production.key").delete
+
+      expect(check.refusals.join).to include("config/credentials/production.key", "RAILS_MASTER_KEY")
+    end
+
+    it "names the root key file for root credentials" do
+      credentials(content_path: "config/credentials.yml.enc", key_path: "config/master.key")
+      @root.join("config/master.key").delete
+
+      expect(check.refusals.join).to include("No key opens config/credentials.yml.enc", "config/master.key")
+    end
+
+    it "refuses a deploy that never hands the container its key, though the key file is here" do
+      credentials
+      deploy(secret: [])
+
+      expect(check.refusals.join).to include("RAILS_MASTER_KEY", "env.secret")
+    end
+
+    it "suspects an exported RAILS_MASTER_KEY when the key is wrong" do
+      credentials
+      ENV["RAILS_MASTER_KEY"] = ActiveSupport::EncryptedFile.generate_key
+
+      expect(check.refusals.join).to include("doesn't open", "unset RAILS_MASTER_KEY")
+    end
+
+    it "refuses a key of the wrong length instead of stopping on it" do
+      credentials
+      ENV["RAILS_MASTER_KEY"] = "abc"
+
+      expect(check.refusals.join).to include("doesn't open")
+    end
+  end
+
+  describe "HTTPS" do
+    before { credentials }
+
+    it "refuses a single server with no SSL proxy while production forces HTTPS" do
+      deploy(proxy: nil)
+
+      expect(check.refusals.join).to include("proxy", "ssl: true", "force_ssl")
+    end
+
+    it "refuses a proxy whose ssl isn't on" do
+      deploy(proxy: { "host" => "app.acme.test" })
+
+      expect(check.refusals.join).to include("ssl: true")
+    end
+
+    it "accepts a proxy with its own certificate" do
+      deploy(proxy: { "host" => "app.acme.test", "ssl" => { "certificate_pem" => "CERT_PEM", "private_key_pem" => "KEY_PEM" } })
+
+      expect(check.refusals).to be_empty
+    end
+
+    it "leaves several servers to the load balancer in front of them" do
+      deploy(proxy: { "host" => "app.acme.test" }, hosts: %w[203.0.113.10 203.0.113.11])
+
+      expect(check.refusals).to be_empty
+    end
+
+    it "leaves the proxy alone when production doesn't force HTTPS" do
+      force_ssl(false)
+      deploy(proxy: nil)
+
+      expect(check.refusals).to be_empty
+    end
+  end
+
+  describe "the shared preset" do
+    before do
+      write(".fork.yml", "name: acme\npreset: shared\n")
+      credentials
+    end
+
+    it "refuses a first deploy that can't seed the shared workspace's owner" do
+      deploy
+
+      expect(check.refusals.join).to include("TENANCY_OWNER_EMAIL")
+    end
+
+    it "warns while workspace creation is still on" do
+      deploy(env: ready_env.merge("TENANCY_OWNER_EMAIL" => "owner@acme.test"))
+
+      expect(check.refusals).to be_empty
+      expect(check.warnings.join).to include("TENANCY_WORKSPACE_CREATION")
+    end
+
+    it "doesn't warn once workspace creation is off" do
+      deploy(env: ready_env.merge("TENANCY_OWNER_EMAIL" => "owner@acme.test", "TENANCY_WORKSPACE_CREATION" => "disabled"))
+
+      expect(check.warnings).to be_empty
+    end
+  end
+
+  it "warns about the template's placeholder server and backups being off" do
+    deploy(env: ready_env.except("BACKUP_PATH"), hosts: [ "192.168.0.1" ])
+    credentials
+
+    expect(check.warnings.join).to include("192.168.0.1", "Backups are off")
+  end
+
+  it "reads the template's own deploy files, as a fork first meets them" do
+    %w[config/deploy.yml config/environments/production.rb .kamal/secrets].each { |path| write(path, template.join(path).read) }
+
+    expect(headlines(check.refusals)).to contain_exactly(/production.yml.enc doesn't exist/, /RAILS_HOST is unset/, /no proxy with ssl: true/)
+    expect(check.warnings.join).to include("192.168.0.1", "Backups are off")
+  end
+
+  describe "#run" do
+    let(:printed) { StringIO.new }
+
+    it "prints each refusal, counts them and fails" do
+      deploy(env: ready_env.except("RAILS_HOST"))
+      credentials
+
+      expect(check.run(printed)).to eq(1)
+      expect(printed.string).to include("RAILS_HOST is unset")
+      expect(printed.string.lines.last.chomp).to eq("1 problem stops a deploy.")
+    end
+
+    it "prints warnings and passes when nothing is refused" do
+      deploy(hosts: [ "192.168.0.1" ])
+      credentials
+
+      expect(check.run(printed)).to eq(0)
+      expect(printed.string).to include("Warning: servers: still lists the template's 192.168.0.1")
+      expect(printed.string.lines.last.chomp).to eq("Nothing here stops a deploy.")
+    end
+  end
+
+  describe "bin/rails deploy:check" do
+    before { RakeTasks.load_once }
+
+    around do |example|
+      inherited = ENV["DESTINATION"]
+      ENV["DESTINATION"] = "staging"
+      example.run
+    ensure
+      ENV["DESTINATION"] = inherited
+    end
+
+    it "checks the destination DESTINATION names, after booting the app, and exits with the check's status" do
+      check = instance_double(described_class, run: 1)
+      allow(described_class).to receive(:new).with(root: Rails.root, destination: "staging").and_return(check)
+
+      expect(Rake::Task["deploy:check"].prerequisites).to include("environment")
+      expect { Rake::Task["deploy:check"].execute }.to raise_error(SystemExit) { |exit| expect(exit.status).to eq(1) }
+    end
+  end
+end

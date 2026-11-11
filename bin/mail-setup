@@ -10,6 +10,7 @@ require "rbconfig"
 require "shellwords"
 require "yaml"
 require_relative "../lib/clean_git_env"
+require_relative "../lib/fork_config"
 
 class MailSetup
   # Its message is always a fixed sentence, safe to print.
@@ -339,13 +340,13 @@ class MailSetup
 
   module ClosingMessage
     def self.text(provider:, address:, port:, sender:, changed_files:, first_run:, deploy_written:, signup_mode:,
-                  preset:, preset_in_deploy:, rails_host:, master_key_set:, app_name:, warnings:)
+                  preset:, rails_host:, master_key_set:, app_name:, warnings:)
       step = 0
       numbered = ->(line) { "  #{step += 1}. #{line}" }
       lines = [ "", "Mail is configured for production, but nothing has been sent yet." ]
       lines << "  #{provider}: #{address}, sending as #{sender || "noreply@ your RAILS_HOST"}"
       lines << "  config/deploy.yml wasn't updated, so set the values at the end by hand." unless deploy_written
-      lines.concat(status_warnings(sender:, rails_host:, master_key_set:, preset:, preset_in_deploy:, warnings:))
+      lines.concat(status_warnings(sender:, rails_host:, master_key_set:, warnings:))
 
       lines.push("", "Do this now")
       if changed_files.any?
@@ -361,18 +362,15 @@ class MailSetup
       lines << "  decrypted. Don't run them on a shared screen."
 
       lines.push("", "Before you deploy")
-      lines << numbered.("Production also refuses to start until these are set:")
-      lines << "       RAILS_HOST, under env.clear in config/deploy.yml"
-      lines << "       The encryption keys: run bin/rails db:encryption:init once, and paste"
-      lines << "         its block into bin/rails credentials:edit --environment production"
-      lines << "       Any backup destination you started"
-      lines << "     Details: /docs/developer/deployment (Production preflight)"
+      lines << numbered.("Run bin/rails deploy:check. It lists what production still refuses, such as")
+      lines << "     RAILS_HOST and the encryption keys, each with its fix. Kamal runs it before"
+      lines << "     every build too, and stops a deploy that would fail."
       lines << numbered.("Check that your provider shows the domain and DNS records as verified.")
       if provider == "Amazon SES"
         lines << "     Request production access too. A new account starts in a sandbox, where a"
         lines << "     test to your own address passes and invitations later fail."
       end
-      lines << numbered.("For the deployment itself, run bin/deploy-guide")
+      lines << numbered.("For the deployment itself, follow Fork to Served, /docs/developer/quickstart")
 
       lines.push("", "After you deploy, prove it")
       lines.concat(proof_steps(numbered, signup_mode:, preset:))
@@ -388,14 +386,10 @@ class MailSetup
       lines.join("\n")
     end
 
-    def self.status_warnings(sender:, rails_host:, master_key_set:, preset:, preset_in_deploy:, warnings:)
+    def self.status_warnings(sender:, rails_host:, master_key_set:, warnings:)
       found = warnings.map { |warning| "  #{warning}" }
       found << "  #{sender}'s domain doesn't match RAILS_HOST (#{rails_host}). Check it's the domain you verified." if domain_differs?(sender, rails_host)
       found << "  RAILS_MASTER_KEY is set in this shell. A deploy from here sends that key, not production.key. Unless it's meant for this app, run `unset RAILS_MASTER_KEY` first." if master_key_set
-      if preset && preset != "personal" && !preset_in_deploy
-        found << "  You chose the #{preset} preset, but config/deploy.yml doesn't set WORKSPACE_ON_SIGNUP, so production would use the default."
-        found << "  The shared preset also needs TENANCY_SHARED_WORKSPACE_SLUG there." if preset == "shared"
-      end
       found
     end
     private_class_method :status_warnings
@@ -557,10 +551,10 @@ class MailSetup
     ClosingMessage.text(
       provider: answers[:provider], address: answers[:address], port: answers[:port],
       sender: answers[:sender] || current_sender, changed_files:, first_run: credentials_never_committed?,
-      deploy_written:, signup_mode: values["SIGNUP_MODE"], preset: fork_config["preset"],
-      preset_in_deploy: values.key?("WORKSPACE_ON_SIGNUP"), rails_host: values["RAILS_HOST"],
+      deploy_written:, signup_mode: values["SIGNUP_MODE"], preset: fork_config.preset,
+      rails_host: values["RAILS_HOST"],
       master_key_set: !@env["RAILS_MASTER_KEY"].to_s.strip.empty?,
-      app_name: fork_config["name"] || File.basename(@root), warnings:
+      app_name: fork_config.name || File.basename(@root), warnings:
     )
   end
 
@@ -580,10 +574,9 @@ class MailSetup
 
   def fork_config
     @fork_config ||= begin
-      parsed = YAML.safe_load_file(path(".fork.yml"))
-      parsed.is_a?(Hash) ? parsed : {}
-    rescue Errno::ENOENT, Psych::Exception
-      {}
+      ForkConfig.read(@root)
+    rescue Psych::Exception
+      ForkConfig.new({})
     end
   end
 

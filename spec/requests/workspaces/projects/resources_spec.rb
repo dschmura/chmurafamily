@@ -295,6 +295,12 @@ RSpec.describe "Project Resources", type: :request do
         expect(response).to redirect_to(workspace_project_resources_path(workspace, project))
         expect(flash[:notice]).to eq(I18n.t("workspaces.projects.resources.destroy.success"))
       end
+
+      it "leaves the deleted resource unreachable" do
+        delete workspace_project_resource_path(workspace, project, resource)
+        get workspace_project_resource_path(workspace, project, resource)
+        expect(flash[:alert]).to eq(I18n.t("errors.not_found"))
+      end
     end
 
     # Reordering is the update of a position nested under the resource (#1007).

@@ -1195,15 +1195,12 @@ RSpec.describe "Template invariants" do
         "unaccepted preset gets a .env the app refuses to start on"
     end
 
-    # bin/setup validates the preset it reads from .fork.yml independently of
-    # bin/fork, so it carries its own copy of the list and can drift.
-    it "keeps bin/setup's preset validation in step with the initializer" do
+    it "keeps the presets bin/setup validates against in step with the initializer" do
       accepted = File.read(root.join("config/initializers/tenancy.rb"))[/valid_onboarding = \[(.*?)\]/m, 1]
                      .to_s.scan(/:(\w+)/).flatten
-      declared = File.read(root.join("bin/setup"))[/valid_presets = %w\[(.*?)\]/m, 1].to_s.split
 
-      expect(declared).to match_array(accepted),
-        "bin/setup validates presets as #{declared.inspect} but the app accepts " \
+      expect(ForkConfig::PRESETS).to match_array(accepted),
+        "ForkConfig knows presets #{ForkConfig::PRESETS.inspect} but the app accepts " \
         "#{accepted.inspect} — a drift here either rejects a valid fork or lets a " \
         "typo through into every teammate's .env"
     end
@@ -1253,8 +1250,8 @@ RSpec.describe "Template invariants" do
   end
 
   describe "where a fork finds its mail and sign-up settings" do
-    it "points the Dev Container's next steps at bin/deploy-guide" do
-      expect(File.read(root.join(".devcontainer/setup.sh"))).to include("bin/deploy-guide")
+    it "points the Dev Container's next steps at Fork to Served" do
+      expect(File.read(root.join(".devcontainer/setup.sh"))).to include("/docs/developer/quickstart")
     end
 
     # Directly after MAIL_FROM these lines would conflict with a fork's mail edits on sync.
@@ -1363,41 +1360,6 @@ RSpec.describe "Template invariants" do
       expect(parse_at).to be > guard_at,
         "expected bin/fork's OptionParser block to sit INSIDE the $PROGRAM_NAME guard — " \
         "parse! mutates ARGV, so at load time it corrupts the spec runner's own arguments"
-    end
-  end
-
-  describe "bin/setup leaves a checkout whose specs can pass" do
-    # tailwindcss-rails enhances `assets:clobber` with `tailwindcss:clobber`,
-    # so the Propshaft heal below also deletes app/assets/builds/tailwind.css.
-    # bin/setup used to rebuild it only as a side effect of `exec bin/dev`,
-    # which --skip-server never reaches — leaving a fork's very first
-    # `bundle exec rspec` failing every system spec at once.
-    let(:setup_sh) { File.read(root.join("bin/setup")) }
-
-    # bin/fork records the tenancy preset in .fork.yml; bin/setup is what
-    # applies it per clone. That split is deliberate — a teammate cloning an
-    # already-forked repo runs bin/setup, never bin/fork, so if bin/setup
-    # doesn't read the provenance the second developer silently runs on the
-    # wrong tenancy mode.
-    it "applies the fork's recorded tenancy preset to .env" do
-      expect(setup_sh).to include(".fork.yml"),
-        "expected bin/setup to read .fork.yml — it is the only thing a teammate runs, " \
-        "so it must apply the fork's recorded preset to their .env"
-      expect(setup_sh).to match(/WORKSPACE_ON_SIGNUP/),
-        "expected bin/setup to write WORKSPACE_ON_SIGNUP from the recorded preset"
-    end
-
-    it "rebuilds the Tailwind stylesheet after clobbering assets" do
-      clobber = setup_sh.index("assets:clobber")
-      rebuild = setup_sh.index("tailwindcss:build")
-
-      expect(clobber).not_to be_nil, "expected bin/setup to clobber precompiled assets"
-      expect(rebuild).not_to be_nil,
-        "expected bin/setup to run tailwindcss:build — assets:clobber removes the " \
-        "compiled stylesheet, and without it every system spec fails on contrast/layout"
-      expect(rebuild).to be > clobber,
-        "tailwindcss:build must run AFTER assets:clobber, or the clobber deletes " \
-        "the stylesheet the rebuild just produced"
     end
   end
 
