@@ -1055,6 +1055,7 @@ Valid combinations:
 
 - ✅ Proxy enabled + the three shipped Rails settings → correct production behavior
 - ✅ TLS terminated at your own load balancer (multi-server setups) + the three shipped Rails settings → correct, provided the balancer forwards `X-Forwarded-Proto`
+- ✅ TLS terminated at a web server or tunnel in front of a single server's kamal-proxy, which runs with `ssl: false` off port 80 ([Hardware you run yourself](#hardware-you-run-yourself)) + the three shipped Rails settings → correct, provided the front sends `X-Forwarded-Proto: https`
 
 Broken combinations:
 
@@ -1083,7 +1084,9 @@ hands the container. It adds what a deploy needs that the guard can't see:
 
 - credentials it can't open, or a deploy that never hands the container `RAILS_MASTER_KEY`
 - a single server with no `proxy:` `ssl:` while production forces HTTPS (several
-  servers behind your own load balancer are left to it)
+  servers behind your own load balancer are left to it, and so is a server in
+  front that handles HTTPS once `proxy.run` moves kamal-proxy off port 80, as in
+  [Hardware you run yourself](#hardware-you-run-yourself))
 - a shared preset with no `TENANCY_OWNER_EMAIL`
 
 It warns, without stopping anything, when backups are off, when `servers:` still

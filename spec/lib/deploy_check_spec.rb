@@ -227,6 +227,24 @@ RSpec.describe DeployCheck do
       expect(check.refusals).to be_empty
     end
 
+    it "leaves HTTPS to a server in front when kamal-proxy moves off port 80" do
+      deploy(proxy: { "ssl" => false, "host" => "app.acme.test", "run" => { "http_port" => 8080, "https_port" => 8443 } })
+
+      expect(check.refusals).to be_empty
+    end
+
+    it "leaves HTTPS to a server in front when kamal-proxy publishes no ports" do
+      deploy(proxy: { "ssl" => false, "host" => "app.acme.test", "run" => { "publish" => false } })
+
+      expect(check.refusals).to be_empty
+    end
+
+    it "refuses ssl off while kamal-proxy keeps port 80" do
+      deploy(proxy: { "ssl" => false, "host" => "app.acme.test", "run" => { "http_port" => 80, "https_port" => 8443 } })
+
+      expect(check.refusals.join).to include("ssl: true")
+    end
+
     it "leaves the proxy alone when production doesn't force HTTPS" do
       force_ssl(false)
       deploy(proxy: nil)
