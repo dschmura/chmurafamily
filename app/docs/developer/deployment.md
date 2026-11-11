@@ -1021,22 +1021,21 @@ TLS has two halves: the Rails settings in `config/environments/production.rb` an
 The template ships all three **live** in `config/environments/production.rb`. There is nothing to uncomment on the Rails side:
 
 ```ruby
-# Trust the SSL-terminating proxy's X-Forwarded-Proto header.
-# Without this, Rails sees only the plain HTTP from kamal-proxy
-# inside the container, so cookies won't get the Secure flag.
+# Assume all access to the app is happening through a SSL-terminating reverse proxy.
 config.assume_ssl = true
 
-# Redirect HTTP → HTTPS, enable Strict-Transport-Security header,
-# mark cookies Secure. Requires assume_ssl so the redirect logic
-# can detect requests that are already HTTPS via the proxy.
+# Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
 config.force_ssl = true
 
-# Exclude the Kamal health check endpoint from the HTTPS redirect.
-# kamal-proxy hits /up over HTTP inside the container — without
-# this, health checks 301-redirect and fail, causing Kamal to
-# mark the app unhealthy and refuse to roll forward.
+# Skip http-to-https redirect for the default health check endpoint.
 config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
 ```
+
+kamal-proxy talks plain HTTP to the container, so `assume_ssl` marks every
+request as HTTPS. Rails then builds every URL and redirect as `https://`,
+marks every cookie `Secure` and sends Strict-Transport-Security. With
+`assume_ssl` on, `force_ssl` never redirects; the `/up` exclusion matters only
+if `assume_ssl` is ever turned off.
 
 ### The Kamal proxy setting (your job — this is the half that ships disabled)
 
@@ -1048,7 +1047,7 @@ proxy:
   host: yourdomain.com
 ```
 
-> **The trap: deploying with the proxy block still commented out looks healthy and is completely down.** Because `force_ssl` is already live, every browser request gets 301-redirected to an HTTPS port nothing is serving. But kamal-proxy health-checks `/up` over plain HTTP inside the container, and `ssl_options` deliberately excludes `/up` from the redirect — so the health check passes, Kamal reports the deploy green, and no human can reach the site. If your first deploy "succeeded" but the browser can't connect, this is why.
+> **The trap: deploying with the proxy block still commented out looks healthy and is completely down.** Every redirect the app sends points at `https://`, where nothing is serving, and a browser won't keep a `Secure` cookie over plain HTTP, so nobody stays signed in. kamal-proxy health-checks `/up` over plain HTTP, so the health check passes and Kamal reports the deploy green. If your first deploy "succeeded" but the browser can't connect, this is why. `bin/rails deploy:check` refuses this deploy before it starts ([Production preflight](#production-preflight)).
 
 ### Why they can't be enabled independently
 
@@ -1076,18 +1075,26 @@ Steps 2 and 5 of [First deploy](#first-deploy) cover these:
 `config/initializers/required_production_config.rb` refuses to boot a production process when `RAILS_HOST` is unset or still a placeholder (`example.com`, anything ending in `.example`), when `SMTP_ADDRESS` is unset, `localhost` or a placeholder, or the credentials' `smtp.user_name` or `smtp.password` is blank (see [Configure outbound mail](#4-configure-outbound-mail)), when the Active Record encryption keys are missing from the production credentials, or when a backup bucket is half configured or set alongside `BACKUP_PATH` ([Back up the database](#back-up-the-database)). With no backup destination at all it boots and logs that backups are off. The reason it refuses rather than warns: every mailer link — magic links, password resets, invitations — is generated from `RAILS_HOST`, and DNS-rebinding protection (`config.hosts`) is derived from it. With a placeholder value the app boots, `/up` reports healthy, and nobody can sign in. Missing encryption keys fail the same way — healthy `/up`, then the first read of a user raises. A failed boot is the only version of either failure you can see. Keys: `bin/rails db:encryption:init`, pasted into `bin/rails credentials:edit --environment production` ([Forking](/docs/developer/forking#bootstrap-secrets-and-configuration)).
 
 **Before you deploy**, `bin/rails deploy:check` applies the same rules on your
-machine and lists every one that fails, not only the first. It reads
-`config/deploy.yml` and the production credentials, and adds what a deploy needs
-that the guard can't see:
+machine and lists every one that fails, not only the first. It reads the deploy
+the way Kamal does: `config/deploy.yml` with each role's settings, and
+`.kamal/secrets`, so a password manager there may ask for you, as it does on a
+deploy. It opens the credentials production would open, with the key the deploy
+hands the container. It adds what a deploy needs that the guard can't see:
 
-- credentials it can't open
-- no `proxy:` with `ssl: true` while production forces HTTPS
+- credentials it can't open, or a deploy that never hands the container `RAILS_MASTER_KEY`
+- a single server with no `proxy:` `ssl:` while production forces HTTPS (several
+  servers behind your own load balancer are left to it)
 - a shared preset with no `TENANCY_OWNER_EMAIL`
 
-It warns, without stopping anything, when backups are off or `servers:` still
-lists the template's placeholder address. `DESTINATION=staging` checks staging.
+It warns, without stopping anything, when backups are off, when `servers:` still
+lists the template's placeholder address, and when a shared preset still lets
+people create workspaces (`TENANCY_WORKSPACE_CREATION` isn't `disabled`).
+`DESTINATION=staging` checks staging.
+
 `.kamal/hooks/pre-build` runs it before every image build, so a deploy that would
-fail stops there.
+fail stops there, and `hooks_output` in `config/deploy.yml` prints its warnings
+on every deploy. Commands that build nothing skip it: `bin/kamal deploy -P`,
+`bin/kamal rollback`, and anything run with `-H`.
 
 Rules the guard follows:
 
