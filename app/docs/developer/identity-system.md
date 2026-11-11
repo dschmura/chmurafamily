@@ -49,9 +49,9 @@ When switching away from the upload source, both attachments are purged to save 
 
 ### Accepted Formats
 
-PNG, JPEG, GIF, WebP. GIF uploads show a warning that the crop result will be a static frame.
+PNG, JPEG, GIF, WebP in the picker's file chooser; the model validations (`ApplicationRecord::IMAGE_CONTENT_TYPES`) also accept HEIC and HEIF. GIF uploads show a warning that the crop result will be a static frame.
 
-This allowlist is also what keeps avatars and logos clear of the libvips loaders Active Storage blocks as of Rails 8.1.3.1 — all four still transform normally. See [Security](security.md) for what changed and which formats no longer generate variants.
+This allowlist is also what keeps avatars and logos clear of the libvips loaders Active Storage blocks as of Rails 8.1.3.1 — all six still transform normally. See [Security](security.md) for what changed and which formats no longer generate variants.
 
 ## Workspace Logos
 
@@ -68,20 +68,20 @@ Both users and workspaces have a `primary_color` field — an integer hue value 
 Colors use the OKLCH color space with CSS custom properties for CSP safety:
 
 ```html
-<div style="--hue: 210" class="bg-hue-initials">
-  <!-- background-color: oklch(0.35 0.20 var(--hue)) -->
+<div style="--hue: 210" class="bg-hue-initials text-text-on-hue-initials">
+  <!-- background-color: oklch(var(--hue-initials-l) var(--hue-initials-c) var(--hue)) -->
 </div>
 ```
 
-Two utility classes handle the two use cases:
+One utility class handles it, re-lit per theme by tokens in `app/assets/tailwind/tokens/_semantic.css`:
 
 | Class | OKLCH Values | Purpose |
 |-------|-------------|---------|
-| `.bg-hue-initials` | L=0.35, C=0.20 | Initials circle background (dark, high chroma) |
+| `.bg-hue-initials` | Light: L=0.35, C=0.20; dark: L=0.80, C=0.10 | Initials circle background, paired with `text-text-on-hue-initials` (white in light, dark text in dark) |
 
 ### Why OKLCH?
 
-OKLCH provides perceptually uniform color — a hue slider from 0 to 360 produces colors that look equally vibrant and have consistent contrast with white text. This means any hue value meets AAA contrast for white text on the initials background.
+OKLCH provides perceptually uniform color — a hue slider from 0 to 360 produces colors that look equally vibrant and have consistent contrast with the paired text. This means any hue value meets AAA contrast for `text-text-on-hue-initials` on the initials background, in either theme.
 
 ## Image Cropping
 
@@ -106,6 +106,6 @@ When a user re-opens the crop view for an existing upload, the original (uncropp
 
 ## Removing an Image
 
-The delete action (`DELETE /account/avatar` or `DELETE /workspaces/:slug/logo`) purges both attachments and resets the source to "initials". This uses a standard `button_to` with `method: :delete` — no custom JavaScript fetch needed.
+The delete action (`DELETE /settings/avatar` or `DELETE /workspaces/:slug/logo`) purges both attachments and resets the source to "initials". This uses a standard `button_to` with `method: :delete` — no custom JavaScript fetch needed.
 
 The picker takes the remove target as its own required local, `remove_url:`, separate from `form_url:`, which is where saves go. They are different resources: a workspace's logo saves through `workspaces#update`, so passing its `form_url` as the remove target would send **Remove photo** to `workspaces#destroy` and discard the whole workspace (#1402). A new caller names both.
