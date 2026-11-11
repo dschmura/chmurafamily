@@ -188,11 +188,11 @@ RSpec.describe RequiredProductionConfig do
     end
   end
 
-  describe ".problems" do
+  describe ".refusals" do
     it "lists every refusal at once, in the order a boot meets them" do
-      problems = described_class.problems({ "OBJECT_STORAGE_BUCKET" => "app-backups" }, {}, {})
+      refusals = described_class.refusals({ "OBJECT_STORAGE_BUCKET" => "app-backups" }, {}, {})
 
-      expect(problems.map { |problem| problem.lines.first }).to match([
+      expect(refusals.map { |refusal| refusal.lines.first }).to match([
         /RAILS_HOST is unset/, /SMTP_ADDRESS is unset/, /encryption keys are missing/, /OBJECT_STORAGE_REGION is unset/
       ])
     end
@@ -202,7 +202,7 @@ RSpec.describe RequiredProductionConfig do
       credentials = { smtp: { user_name: "token", password: "token" } }
       keys = { primary_key: "p", deterministic_key: "d", key_derivation_salt: "s" }
 
-      expect(described_class.problems(env, credentials, keys)).to be_empty
+      expect(described_class.refusals(env, credentials, keys)).to be_empty
     end
   end
 

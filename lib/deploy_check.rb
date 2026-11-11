@@ -13,7 +13,7 @@ class DeployCheck
 
   def refusals
     @refusals ||= begin
-      boot = RequiredProductionConfig.problems(env, credentials || assumed_credentials, {})
+      boot = RequiredProductionConfig.refusals(env, credentials || assumed_credentials, {})
       [ (unreadable_credentials unless credentials), *boot, proxy_refusal, owner_refusal ].compact
     end
   end
