@@ -4,6 +4,12 @@ All notable changes to ModelRails are documented here, organized by phase.
 
 ## [Unreleased]
 
+## v2026.11.11-3
+
+### Fixed
+
+- `bin/rails deploy:check` no longer refuses a server whose HTTPS ends at a web server in front of kamal-proxy, once `proxy.run` moves the proxy off port 80.
+
 ## v2026.11.11-2
 
 ### Fixed
