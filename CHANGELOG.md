@@ -4,6 +4,12 @@ All notable changes to ModelRails are documented here, organized by phase.
 
 ## [Unreleased]
 
+## v2026.11.11-2
+
+### Fixed
+
+- CI installs libvips from the Actions cache once a runner image has cached it, so an Ubuntu mirror outage no longer fails every job.
+
 ## v2026.11.11
 
 ### Removed
