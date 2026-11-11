@@ -8,45 +8,17 @@ keywords: notifications bell dropdown unread quiet hours email digest categories
 
 ModelRails keeps you informed about what's happening across your workspaces, projects, and account — without overwhelming you. This guide covers how to read notifications, mark them as handled, and tune what you receive (and when).
 
-## The bell
+## The indicator
 
-You'll find the bell icon in the top-right of every page, next to your avatar.
+There is no separate bell. When you have unread notifications, a small dot appears on your avatar in the top-right of every page (on a phone, on the menu button). Its color follows the most serious unread notification, and it pulses for a security alert. Screen readers hear the count in the avatar button's name — for example, "User menu for Alex Kim. 3 unread notifications, including a security alert."
 
-| What you see | What it means |
-|---|---|
-| Just the bell | Nothing new — you're caught up |
-| Bell + number badge | You have unread notifications. The number shows how many |
-| `10+` badge | More than nine unread |
+### Opening your notifications
 
-The bell also shows a tooltip ("hidden by Do Not Disturb") when quiet hours are suppressing notifications and you still have unread items.
-
-### Opening the dropdown
-
-Three ways:
-
-- **Click** the bell
-- **Cmd+Shift+N** (Mac) or **Ctrl+Shift+N** (Windows/Linux) — works from anywhere on the page
-- **Tab** to the bell with your keyboard, then **Enter** or **Space**
-
-The dropdown shows your most recent notifications (up to 10 unread + 5 most recent read). Unread items have a subtle highlighted background and announce as "Unread" to screen readers.
-
-### Navigating the dropdown
-
-Once it's open:
-
-| Key | What it does |
-|---|---|
-| **↓ / ↑** | Move focus to the next / previous notification |
-| **Home** | Jump to the first notification |
-| **End** | Jump to the last notification |
-| **Enter** | Open the focused notification (marks it read, takes you to the page it links to) |
-| **Esc** | Close the dropdown (focus returns to the bell) |
-
-Click "See all notifications" at the top of the dropdown for the full list.
+Open the user menu and choose **Notifications**. The row shows how many are unread ("3 new") and takes you to the full notifications page.
 
 ## The full notifications page
 
-Visit `/account/notifications` to see every notification you've received (not just the recent ones).
+Visit `/settings/notifications` to see every notification you've received.
 
 ### Filtering
 
@@ -72,15 +44,15 @@ Beneath it, the page tells you how your list clears on its own (see [Advanced](#
 
 ## Real-time updates across tabs
 
-When you mark a notification read on one device or browser tab, all your other open tabs update automatically — the bell badge count drops, the dropdown list refreshes, and screen readers hear a "Notifications updated" announcement. Same when a new notification arrives: every open tab updates without a page refresh.
+When you mark a notification read on one device or browser tab, all your other open tabs update automatically — the indicator dot and the user menu's count change, and screen readers hear a "Notifications updated" announcement. Same when a new notification arrives: every open tab updates without a page refresh.
 
 You don't need to do anything to make this work. It's on by default.
 
 ## Notification preferences
 
-Visit **`/account/notification_preferences/edit`** (or open it from your user menu) to tune what you receive.
+Visit **`/settings/notification_preferences/edit`** (or choose **Notifications** in your account settings) to tune what you receive.
 
-The page has four sections, each with its own card.
+The page shows your timezone at the top, then four sections, each with its own card.
 
 ### 1. Your timezone
 
@@ -108,7 +80,7 @@ The switch for Security is dimmed to show it can't be changed; the "Always on" l
 
 For each delivery channel, you can opt in or out:
 
-- **In-app** — the bell + dropdown experience described above
+- **In-app** — the indicator and notifications list described above
 - **Email** — sent to your account email address. You can also choose the email cadence:
 
 | Cadence | When emails arrive |
@@ -137,7 +109,7 @@ If you turn quiet hours on but uncheck every day, the system can't apply the win
 
 ### 5. Advanced
 
-- **Auto-delete read notifications after** — how long a read notification stays before it is removed. Options: 30, 60, 90, 180, or 365 days. The clock starts when you read it, so unread notifications are never removed. Your account's security history (password changes, new devices, passkeys) is kept separately for at least a year on the Security page, regardless of this setting.
+- **Auto-delete read notifications after** — how long a read notification stays before it is removed. Options: 30, 60, 90, 180, or 365 days. The clock starts when you read it, so unread notifications are never removed. Your account's security history (password changes, new devices, passkeys) is kept separately for at least a year, regardless of this setting; its recent entries are listed on the Active devices page.
 
 ## What carries across devices
 
@@ -145,7 +117,7 @@ Your preferences (notification types, delivery methods, quiet hours, retention, 
 
 ## Frequently asked
 
-**Why didn't I get an email for a notification I see in the bell?**
+**Why didn't I get an email for a notification I see in the app?**
 Likely because your email delivery for that category is off, your email digest cadence is Daily or Weekly (so the email is queued up for the next digest run), or quiet hours are active.
 
 **Can I get security alerts to my phone via SMS?**
@@ -155,7 +127,7 @@ Not yet. SMS and push notifications are on the roadmap; the current channels are
 No. Mark-all-read is a single atomic operation. If you need to recover a specific notification, the data isn't lost — it's still in your notifications list with `read_at` set — so you can find it via the filters and mark it unread again.
 
 **Can I delete a notification?**
-No. Read notifications are removed on their own after your retention window, counted from when you read them; unread ones stay until you read them. Marking a notification read is the only action, and it is what starts the clock. Nothing you can do here affects your account's security history, which lives on the Security page.
+No. Read notifications are removed on their own after your retention window, counted from when you read them; unread ones stay until you read them. Marking a notification read is the only action, and it is what starts the clock. Nothing you can do here affects your account's security history, whose recent entries are on the Active devices page.
 
 ## Related
 
