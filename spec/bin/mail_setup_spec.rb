@@ -1001,7 +1001,7 @@ RSpec.describe MailSetup do
         "git diff, git show, git log -p and git commit -v",
         "Before you deploy",
         "RAILS_HOST", "bin/rails db:encryption:init", "backup destination", "Production preflight",
-        "verified", "bin/deploy-guide",
+        "verified", "Fork to Served, /docs/developer/quickstart",
         "After you deploy",
         "bin/kamal console", "User.create!", "an address with no account gets no email",
         "bin/kamal logs", "5 links", "suppressed",

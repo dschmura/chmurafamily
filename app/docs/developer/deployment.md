@@ -1170,7 +1170,8 @@ provide the contract below — Hatchbox and similar managed platforms included.
 Ignore `config/deploy.yml`, `.kamal/`, and `bin/kamal`; leave them in place so
 upstream template merges stay clean (see [Forking](forking)).
 
-Run `bin/deploy-guide` to get pointed at the right guide for your target.
+[Changing the defaults](changing-the-defaults#where-it-runs) sets the hosting
+choices side by side.
 
 ### The portable contract
 

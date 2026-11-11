@@ -373,7 +373,7 @@ class MailSetup
         lines << "     Request production access too. A new account starts in a sandbox, where a"
         lines << "     test to your own address passes and invitations later fail."
       end
-      lines << numbered.("For the deployment itself, run bin/deploy-guide")
+      lines << numbered.("For the deployment itself, follow Fork to Served, /docs/developer/quickstart")
 
       lines.push("", "After you deploy, prove it")
       lines.concat(proof_steps(numbered, signup_mode:, preset:))
