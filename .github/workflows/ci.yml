@@ -39,9 +39,9 @@ jobs:
 
       - name: Install libvips (loaded at Rails boot via active_storage_validations)
         timeout-minutes: 5
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libvips42t64
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: libvips42t64
 
       - name: Prepare RuboCop cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -171,9 +171,9 @@ jobs:
 
       - name: Install libvips (Active Storage image variants)
         timeout-minutes: 5
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libvips42t64 libheif-plugin-libde265
+        uses: ./.github/actions/apt-packages
+        with:
+          packages: libvips42t64 libheif-plugin-libde265
 
       - name: Verify Chrome is available (Cuprite/ferrum connects to the runner's pre-installed browser)
         # No install step: ubuntu-latest ships Google Chrome pre-installed and
