@@ -191,10 +191,9 @@ RSpec.describe "Account Connected Accounts", type: :request do
       expect(flash[:alert]).to eq(I18n.t("settings.connected_account_verifications.show.invalid_or_expired"))
     end
 
-    it "renders via the legacy path-token route without verifying (#950/#916)" do
-      get settings_legacy_verify_settings_connected_accounts_path(token: auth.generate_token_for(:email_verification))
-      expect(response).to have_http_status(:ok)
-      expect(auth.reload.verified_at).to be_nil
+    it "no longer serves the retired path-token route (#950)" do
+      get "#{settings_connected_account_verification_path}/#{auth.generate_token_for(:email_verification)}"
+      expect(response).to have_http_status(:not_found)
     end
   end
 
