@@ -36,7 +36,7 @@ For setup details (Relying Party configuration, browser support, troubleshooting
 
 If Google or GitHub sign-in is enabled, you can use the provider button on the sign-in page instead of email. On your first visit the provider creates an account for you, if sign-up is open to you (the app allows open sign-up, or you arrived through an invitation or a join link); otherwise you're told sign-ups are by invitation. On subsequent visits it signs you back in.
 
-If you already have an account (by email) and want to link Google or GitHub to it: sign in first, then click the provider button — if the provider email matches your account, the provider is linked automatically. Manage all linked sign-in methods at **Settings → Security**.
+If you already have an account (by email) and want to link Google or GitHub to it: sign in, open **Settings → Security**, and click **Connect Google** (or **Connect GitHub**). If the provider's email matches your account, it's linked straight away; if it differs, we email that address a confirmation link first. The same page lists every linked sign-in method.
 
 ### First sign-in (new accounts)
 

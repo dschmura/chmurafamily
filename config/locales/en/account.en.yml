@@ -162,6 +162,9 @@ en:
       index:
         cancel_action: "Cancel link"
         confirming_banner_html: "Almost there — we sent a confirmation link to <strong>%{email}</strong> to make sure that's really you. Click the link to finish linking %{provider}."
+        connect_action: "Connect %{provider}"
+        connect_heading: "Connect another sign-in"
+        connect_help: "Sign in with these as well as your email. If the provider's address differs from yours, we email it a confirmation link first."
         disconnect: "Unlink"
         disconnect_title: "Unlink %{provider}?"
         disconnect_message: "You'll need to re-add %{provider} (%{email}) if you want to sign in with it again. This won't affect your account."
