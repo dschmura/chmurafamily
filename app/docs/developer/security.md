@@ -14,9 +14,10 @@ Auth endpoints are rate-limited via Rails 8 `rate_limit` DSL:
 
 | Endpoint | Limit | Window |
 |----------|-------|--------|
-| POST /session (sign in / email-first lookup) | 10 requests | 3 minutes |
-| POST /passwords (reset) | 10 requests | 3 minutes |
-| POST /magic_links (magic link) | 5 requests | 3 minutes |
+| POST /session (password sign-in) | 10 requests | 3 minutes |
+| POST /session/lookup (email-first lookup) | 10 requests | 3 minutes |
+| POST /password_reset (reset) | 10 requests | 3 minutes |
+| POST /magic_link (magic link) | 5 requests | 3 minutes |
 
 ### Per-Recipient Email Throttle
 
@@ -69,9 +70,10 @@ row means "invitations from inviter *I* to address *E* are not delivered".
 Blocks are **email-keyed and account-independent**: they work for a decliner
 with no account, survive the address later becoming a user, and do not follow
 a user who changes their address. A block is policy state, not audit — it is
-deleted with its inviter, and the operator door in
-[Troubleshooting](/docs/developer/troubleshooting#operations) is the only way
-to lift one.
+deleted with its inviter. The invitee lifts one themselves under Blocked
+senders (`/settings/invitation_blocks`, which lists the blocks on the address
+they sign in with, #812); the operator door in
+[Troubleshooting](/docs/developer/troubleshooting#operations) lifts any.
 
 When a delivery aimed at a blocked address is refused, the invitation is
 stamped `suppressed_at` (a **ghost**) and, on the mailer sites, an
@@ -116,8 +118,8 @@ number, so the numbers live here:
 - **I4 — `suppressed_at` has exactly three writers, all callback-free.**
   Create-time on the bulk path (create attributes), retroactively at block
   creation (`update_column`), and the mailer guard (`update_column`) — never a
-  callback-running `update!`. (`update_all` is the operator unblock's verb, not
-  a writer's.) `Trackable` would otherwise publish the
+  callback-running `update!`. (`update_all` is the unblock's verb,
+  `InvitationBlock.unblock!`, not a writer's.) `Trackable` would otherwise publish the
   stamp to the workspace feed as an ordinary update, which is itself the
   oracle. A fourth writer, or a callback-running one, is a violation.
 
@@ -133,7 +135,7 @@ and the guard that stops it:
 | --- | --- | --- |
 | 1 | `Invitation.bulk_invite!` (workspace invites, incl. onboarding) | `InvitationMailer` `before_action` + create-time stamp |
 | 2 | `Invitation.invite_client!` | `InvitationMailer` `before_action` |
-| 3 | `Workspaces::InvitationsController#resend` | `InvitationMailer` `before_action` |
+| 3 | `Workspaces::Invitations::ResendsController#create` | `InvitationMailer` `before_action` |
 | 4 | `Workspaces::Projects::InvitationsController#create` | `InvitationMailer` `before_action` |
 | 5 | `WorkspaceInvitationExpiringSweepJob` (in-app + email dispatch) | `next unless invitation.deliverable?` — silent skip, no audit row |
 | 6 | `NotificationMailer#workspace_invitation_expiring_soon` (the reminder's email leg) | `return unless @invitation.deliverable?` before `mail(...)` — silent skip |
@@ -304,7 +306,7 @@ None of these five tokens is plaintext at rest. Magic-link and workspace-join-li
 
 - Both logs are Docker `json-file` logs on the single deploy host, capped at 10 MB each by Kamal's defaults (`--log-opt max-size=10m` for the app container, `log_max_size` for the proxy) when `config/deploy.yml` sets nothing. Nothing is shipped off the host. The app-container log is replaced on each deploy and pruned with the last five containers; the proxy log is long-lived and rolls on size only, so it is the copy that holds a token longest.
 - Reading either log needs `docker logs` over the deploy SSH key, which is root. Anyone who can read a token there can already read the database.
-- Token lifetimes cap what a copy is worth. Magic-link tokens expire in 15 minutes, are single-use, and are superseded by requesting a new link. Presenting a spent one starts no session and consumes nothing: its owner, if already signed in, is told so (`authentication.already_signed_in`); anyone else gets the invalid answer. A superseded-but-unused link carries the same `consumed_at` as a redeemed one and is answered the same way — the distinction is [#1083](https://github.com/dschmura/modelrails_base/issues/1083). Invitation tokens expire in 7 days, are single-use, and accept refuses an email mismatch. Email-verification tokens expire in 24 hours. Workspace join links expire seven days after creation or rotation (`WorkspaceJoinLink::LIFETIME`), same as invitations, and an admin can also revoke one early ([#952](https://github.com/dschmura/modelrails_base/issues/952)).
+- Token lifetimes cap what a copy is worth. Magic-link tokens expire in 15 minutes, are single-use, and are superseded by requesting a new link. Presenting a spent one starts no session and consumes nothing: a redeemed link re-presented by its owner, if already signed in, is told so (`authentication.already_signed_in`); anyone else gets the invalid answer. A link superseded before it was used is stamped `superseded_at` as well as `consumed_at`, so it gets the invalid answer even from its signed-in owner ([#1083](https://github.com/dschmura/modelrails_base/issues/1083)). Invitation tokens expire in 7 days, are single-use, and accept refuses an email mismatch. Email-verification tokens expire in 24 hours. Workspace join links expire seven days after creation or rotation (`WorkspaceJoinLink::LIFETIME`), same as invitations, and an admin can also revoke one early ([#952](https://github.com/dschmura/modelrails_base/issues/952)).
 
 **Rule for new work.** A secret goes in the query string or the request body, never in a path segment; `spec/code_smells/no_new_bearer_tokens_in_route_paths_spec.rb` holds the existing routes to a named allow-list and fails on a new one. Existing routes move only when they are touched for another reason (verification first, [#950](https://github.com/dschmura/modelrails_base/issues/950)), with both route shapes live for one token lifetime; join links move by forced rotation.
 
@@ -450,8 +452,10 @@ product decision, not a migration.
 | `authentications.uid` | deterministic | `(provider, uid)` lookup and unique index; email-provider rows carry the user id, not the address (#903) |
 | `invitations.email` | deterministic, downcased | one pending invitation per address per invitable |
 | `magic_link_tokens.email` | deterministic, downcased | one unconsumed token per address |
+| `invitation_blocks.email` | deterministic, downcased | block lookup by address; unique `(email, inviter)` index |
 | `users.pending_email`, `first_name`, `last_name` | non-deterministic | never looked up |
 | `authentications.email`, `invitations.company_name`, `client_accesses.company_name` | non-deterministic | never looked up |
+| `activity_logs.actor_name` | non-deterministic | the actor's name snapshot; never looked up |
 
 `workspaces.name` stays plaintext deliberately: the slug is the name,
 parameterized, and sits in every URL. Two properties worth knowing: the
@@ -503,9 +507,9 @@ The `Trackable` concern logs workspace-domain model changes to `ActivityLog` on 
 - `token`, `password_digest`
 - `oauth_token`, `oauth_refresh_token`
 
-**Account-security events are a separate, stricter tier.** Password set/change/removal, passkey enrollment/removal, sign-in from a new device, and instance-operator grant/revocation write rows named in `ActivityLog::SECURITY_ACTIONS`, through `ActivityLog.record_security_event!`. The credential events — including operator grants and revocations — are written **in the same transaction as the mutation they record, with no rescue** — a failed audit write fails the credential write. Sign-in detection stays best-effort, because the `Session` row is already the primary record of a sign-in.
+**Account-security events are a separate, stricter tier.** Password set/change/removal, passkey enrollment/removal, sign-in from a new device, instance-operator grant/revocation, and an account's suspension, unsuspension and unlock write rows named in `ActivityLog::SECURITY_ACTIONS`, through `ActivityLog.record_security_event!`. The credential events — including operator grants and revocations, suspensions and unlocks — are written **in the same transaction as the mutation they record, with no rescue** — a failed audit write fails the credential write. Sign-in detection stays best-effort, because the `Session` row is already the primary record of a sign-in.
 
-These rows are retained on their own floor (`ActivityLogRetentionSweepJob::SECURITY_RETENTION_FLOOR`, 365 days) rather than the general 12-month window. Rows at `personal` visibility (the account events above) are readable by their owner on `/settings/sessions`; rows at `admin` visibility (operator grants and revocations, whose actor is the granter when there is one — a rake grant records none — rather than the subject) appear in the operations feed instead. Full per-event table, including what corroborates each row: [Notifications § Security event audit coverage](/docs/developer/notifications). The matching in-app notification carries no retention floor of its own — it is attention state on the user's clock. The `ActivityLog` row is the record.
+These rows are retained on their own floor (`ActivityLogRetentionSweepJob::SECURITY_RETENTION_FLOOR`, 365 days) rather than the general 12-month window. Rows at `personal` visibility (the account events above) are readable by their owner on `/settings/sessions`; rows at `admin` visibility (operator grants and revocations, suspensions and unlocks, whose actor is the operator who acted when there is one — a rake run records none — rather than the subject) appear in the operations feed instead. Full per-event table, including what corroborates each row: [Notifications § Security event audit coverage](/docs/developer/notifications). The matching in-app notification carries no retention floor of its own — it is attention state on the user's clock. The `ActivityLog` row is the record.
 
 ### Image Processing (Active Storage + libvips)
 
@@ -522,7 +526,7 @@ Two consequences to know about:
 
 The initializer governs what renders as a *variant*. What can be *uploaded* is gated per surface — avatar/logo attachments by model validations, rich-text direct uploads by `DirectUploadsController` (next section). Widen those, not the initializer.
 
-Uploads backing user avatars, workspace logos and project logos are restricted by model validations to `ApplicationRecord::IMAGE_CONTENT_TYPES` (PNG, JPEG, GIF, WebP, HEIC, HEIF) with size caps. That list is deliberately **wider** than `ActiveStorage.web_image_content_types`, which is the set a browser renders directly: Rails converts a variant of anything outside that set to PNG automatically, so the constraint that matters is "can libvips process it safely", not "can a browser display it". HEIC/HEIF is the iPhone camera default — excluding it would bounce the single most common source of an avatar or logo upload for no security benefit: both types load and transform under `Vips.block_untrusted(true)` and remain in `variable_content_types`, and the production base image (Debian's libvips 8.16.1 in `ruby:slim`) ships `heifload` and `heifsave`. The list is one shared constant rather than a copy per model because a single list guards four attachments across two models — a copy per call site is how #496's drift happened.
+Uploads backing user avatars, workspace logos and project logos are restricted by model validations to `ApplicationRecord::IMAGE_CONTENT_TYPES` (PNG, JPEG, GIF, WebP, HEIC, HEIF) with size caps. That list is deliberately **wider** than `ActiveStorage.web_image_content_types`, which is the set a browser renders directly: Rails converts a variant of anything outside that set to PNG automatically, so the constraint that matters is "can libvips process it safely", not "can a browser display it". HEIC/HEIF is the iPhone camera default — excluding it would bounce the single most common source of an avatar or logo upload for no security benefit: both types load and transform under `Vips.block_untrusted(true)` and remain in `variable_content_types`, and the production base image (Debian's libvips 8.16.1 in `ruby:slim`) ships `heifload` and `heifsave`. The list is one shared constant rather than a copy per model because a single list guards five attachments across three models — a copy per call site is how #496's drift happened.
 
 ### Rich-Text Direct Uploads (SEC-7)
 
@@ -534,7 +538,7 @@ Enforcement reality — what each check actually buys (panel, 2026-08-13):
 - The declared **content type filters honest clients only**: Active Storage re-identifies the real type from the stored bytes at attach time, where model validations judge it.
 - **Attachment happens by signed GID** embedded in the submitted body — a blob's `attachable_sgid` is sufficient to attach it — so any *new* blob-creation path a fork adds must carry its own gate.
 
-The `>= x.y.z` floor on the `rails` gem in the Gemfile is a security floor: it stops a fresh `bundle install` in a fork from resolving back onto a version patched for a known CVE. Dependabot rewrites that line on every Rails bump and will drop the floor, so `spec/code_smells/template_invariants_spec.rb` fails if the requirement ever admits a vulnerable release again.
+The `rails` line in the Gemfile pins a full commit of Rails main, moved by hand; Dependabot ignores it. `spec/code_smells/template_invariants_spec.rb` holds that line to a security floor, so a fresh `bundle install` in a fork cannot resolve onto a vulnerable Rails: a git-sourced `rails` must pin `ref:` to a 40-character commit, and a released requirement must not admit a release vulnerable to CVE-2026-66066. A commit's version string cannot show that fix, so the same spec also checks that the locked libvips refuses an untrusted loader.
 
 ## External Client Access
 
@@ -568,7 +572,7 @@ gem "rack-attack"
 
 # config/initializers/rack_attack.rb
 Rack::Attack.throttle("logins/ip", limit: 20, period: 1.hour) do |req|
-  req.ip if req.path == "/session" && req.post?
+  req.ip if req.post? && %w[/session /session/lookup].include?(req.path)
 end
 ```
 
@@ -591,8 +595,10 @@ This is especially relevant for:
 
 ### Outbound Requests (SSRF)
 
-The template makes exactly one outbound HTTP call today — a gravatar existence
-check against a hardcoded host — so it ships **no** SSRF machinery. The moment
+The template's outbound HTTP calls all go to hosts fixed in code — the gravatar
+existence check (`CheckGravatarJob`), the Have I Been Pwned range check behind
+password validation, and the OAuth providers in the registry — so it ships
+**no** SSRF machinery. The moment
 a fork adds its first **user-controlled outbound host** (webhook deliveries,
 avatar-by-URL, link previews, OAuth discovery), that feature needs all of the
 following, **in this order**:
@@ -646,11 +652,18 @@ following, **in this order**:
 
 ### HTTPS and HSTS
 
-Configure in `config/environments/production.rb`:
+`config/environments/production.rb` already sets `config.force_ssl = true`
+(with `assume_ssl` for the TLS-terminating proxy), which redirects to HTTPS,
+marks cookies secure and sends HSTS with Rails' defaults: two years,
+subdomains included, no preload. Its `ssl_options` exempts the `/up` health
+check from the redirect. To opt into the preload list, add `hsts:` to that
+hash rather than replacing it:
 
 ```ruby
-config.force_ssl = true
-config.ssl_options = { hsts: { subdomains: true, preload: true, expires: 1.year } }
+config.ssl_options = {
+  redirect: { exclude: ->(request) { request.path == "/up" } },
+  hsts: { subdomains: true, preload: true }
+}
 ```
 
 ### Responding to a Secret Exposure
@@ -658,7 +671,7 @@ config.ssl_options = { hsts: { subdomains: true, preload: true, expires: 1.year 
 Some vulnerabilities disclose anything readable by the app process — CVE-2026-66066 above is one. Upgrading closes the hole but does not undo an exfiltration that already happened. If your deployment ran an affected version while reachable by untrusted users, treat every secret the process could read as exposed and replace it:
 
 1. `secret_key_base` — rotating it signs out every user and invalidates encrypted and signed cookies, signed global IDs, and existing Active Storage URLs.
-2. The master key (`config/master.key` or `RAILS_MASTER_KEY`) and everything `config/credentials.yml.enc` decrypts. Re-encrypt under the new key with `bin/rails credentials:edit`. One entry inside the blob is different: `active_record_encryption.primary_key` rotates by listing the new key after the old one and re-saving records (Rails guide, "Rotating Keys"), but `deterministic_key` **cannot** rotate — Rails refuses a list. Replacing it means decrypting every deterministic column under the old key and re-writing under the new one in a one-off pass this template does not ship; until then, an exposed deterministic key means the addresses in `users.email_address`, `invitations.email`, and `magic_link_tokens.email` are recoverable from any dump taken while it was in use — as is `invitations.token` (also deterministic, for its `find_by` lookup and unique index), so working invitation accept/decline/block links are recoverable from that dump too, for as long as those invitations stay pending. `authentications.pending_invitation_token` (the parked copy of the same token, held non-deterministically because nothing looks it up by value) decrypts under the rotatable `primary_key` instead, so it isn't stuck the way the deterministic columns are — but until you actually rotate, it is exposed the same way everything else in this step is.
+2. The master key (`config/master.key` or `RAILS_MASTER_KEY`) and everything `config/credentials.yml.enc` decrypts. Re-encrypt under the new key with `bin/rails credentials:edit`. One entry inside the blob is different: `active_record_encryption.primary_key` rotates by listing the new key after the old one and re-saving records (Rails guide, "Rotating Keys"), but `deterministic_key` **cannot** rotate — Rails refuses a list. Replacing it means decrypting every deterministic column under the old key and re-writing under the new one in a one-off pass this template does not ship; until then, an exposed deterministic key means the addresses in `users.email_address`, `invitations.email`, `magic_link_tokens.email`, and `invitation_blocks.email` are recoverable from any dump taken while it was in use — as is `invitations.token` (also deterministic, for its `find_by` lookup and unique index), so working invitation accept and decline links are recoverable from that dump too, for as long as those invitations stay pending. `authentications.pending_invitation_token` (the parked copy of the same token, held non-deterministically because nothing looks it up by value) decrypts under the rotatable `primary_key` instead, so it isn't stuck the way the deterministic columns are — but until you actually rotate, it is exposed the same way everything else in this step is.
 3. Storage service credentials (S3, GCS, Azure) if you moved off the local disk service.
 4. Database credentials, if your database is not the bundled SQLite file.
 5. API tokens and keys for every third-party service the app calls — OAuth client secrets, mail provider keys, error reporting DSNs.
