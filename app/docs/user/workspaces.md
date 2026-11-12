@@ -14,11 +14,11 @@ A workspace is the top-level organizational boundary — users, projects, invita
 
 On a desktop-width screen the current workspace — its logo, its name and your role in it — sits at the top of the sidebar on every workspace page. It is one control: open it to see the other workspaces you belong to and switch, or choose **All workspaces**. On a phone the same control sits above the Overview / Projects / Settings tabs and lists your five most recently used workspaces; **All workspaces** covers the rest.
 
-**All workspaces** (also in the account menu) opens *Your workspaces*: every workspace you belong to with a **Switch** button, and archived ones you can restore. On a phone the control stays at the top of that page too, so you can move on without going back.
+**All workspaces** (also in the account menu) opens *Your workspaces*: every workspace you belong to with a **Switch** button, a **Leave** button on the rows below the current one that you're allowed to leave (not your personal workspace, nor one where you're the last owner), and archived ones you can restore. On a phone the control stays at the top of that page too, so you can move on without going back.
 
 ## Creating a Workspace
 
-Any authenticated user can create a workspace. A URL-safe slug is generated automatically from the name. The creator is assigned the **Owner** role.
+Any authenticated user can create a workspace, unless the instance turns workspace creation off (`TENANCY_WORKSPACE_CREATION=disabled`). A URL-safe slug is generated automatically from the name. The creator is assigned the **Owner** role.
 
 **Defaults:** free plan, 5 max members, 3 max projects.
 
@@ -41,15 +41,15 @@ These limits are enforced when creating new memberships or projects. The validat
 ## Member Management
 
 **Routes:** `/workspaces/:slug/members`  
-**Permission:** `manage_members` (Owner, Admin)
+**Permission:** any member can view the list; changing roles, deactivating and reactivating need `manage_members` (Owner, Admin)
 
 ### Viewing Members
 
-The members index supports:
+The members index lists pending invitations first, then members, and supports:
 
 - **Search** by first name, last name, or email
-- **Filter** by role (Owner, Admin, Member, Viewer) or status (Active, Deactivated)
-- **Sort** by name, email, role, or join date
+- **Filter** by role (Owner, Admin, Member, Viewer) or status (Active, Pending, Deactivated)
+- **Sort** by name, email, or role (newest first otherwise)
 - **Pagination** via Pagy
 
 ### Changing a Member's Role
@@ -81,7 +81,7 @@ Transfers ownership atomically:
 
 ### Email Invitations
 
-1. Enter one or more email addresses (comma or newline separated).
+1. Enter one or more email addresses (comma or newline separated), up to 20 per submission.
 2. Select a role for the invitees. You can only invite at a role you could grant yourself — an Admin can't invite someone straight in as Owner.
 3. The system creates invitation records and sends emails via `InvitationMailer`.
 4. Each invitation has a unique token and **7-day expiry**.
@@ -103,7 +103,7 @@ Creates a shareable URL (no email required). Share the link directly — anyone 
 
 | Action | What it does |
 |--------|-------------|
-| Resend | Regenerates the token and extends expiry by 7 days |
+| Resend | Regenerates the token and resets the expiry to 7 days from now |
 | Revoke | Marks the invitation as revoked (link stops working) |
 
 ## Join Policies
@@ -113,11 +113,11 @@ A workspace's `join_policy` controls how new members can join, layered on the in
 - **`invite`** *(default)* — members can only join through an admin-issued email invitation. This is the safe default for every workspace; matches Slack/Linear/GitHub conventions.
 - **`open_link`** — workspace admins can mint a single shareable join link. Anyone with an account on this instance can click it and join as a Member. The link is **revocable** and **atomically rotatable** (rotate = revoke-old + create-new in one click).
 
-**Configured at:** `/workspaces/:slug/settings/edit` — "Join policy" section. Permission: `manage_settings` (Owner, Admin).
+**Configured at:** `/workspaces/:slug/settings/edit` — "Join policy" section (not shown on a single-tenant `:shared` instance). Permission: `manage_settings` (Owner, Admin).
 
 **Instance ceiling.** The operator decides which strategies workspaces are *allowed* to use via the `SIGNUP_PERMITTED_JOIN_STRATEGIES` env var (default `invite`). When the instance doesn't permit `open_link`, the radio is shown disabled with an explanation — the operator's posture stays visible to admins without surprising them with a missing option.
 
-**Hard guard:** personal workspaces can never be open-joinable, regardless of `join_policy`. `Workspace#open_join?` enforces `!personal?` as the first check; model validation rejects setting `open_link` on a personal workspace.
+**Hard guard:** personal workspaces can never be open-joinable, regardless of `join_policy`. `Workspace#open_join?` checks `!personal?` alongside the policy; model validation rejects setting `open_link` on a personal workspace.
 
 **Single membership-grant entry point.** Both invitation acceptance and open-link self-join go through `Workspace#admit(user, role:)`, which handles workspace locking, capacity, discarded-membership reactivation, and (under the `:shared` tenancy preset) role reconciliation. Authority over the granted role is checked when the invitation or link is **created**, not when it is redeemed — a legitimately-created invitation still admits at its role even if the inviter's privileges later change.
 
@@ -171,14 +171,14 @@ A hue value (0–360) that determines the workspace icon's background color via 
 
 ## Workspace Lifecycle
 
-Every workspace is **Active** by default. An owner (anyone with `manage_workspace` — Owner only, not Admin) can move it through two owner-controlled states from the **Danger Zone** in workspace settings; operators have a third, hold-only state.
+Every workspace is **Active** by default. An owner (anyone with `manage_workspace` — Owner only, not Admin) can move it through two owner-controlled states from the **Danger zone** in workspace settings; operators have a third, hold-only state.
 
 ### Archive (reversible)
 
 **Route:** `POST /workspaces/:slug/archival` (archive) · `DELETE /workspaces/:slug/archival` (restore)  
 **Permission:** `manage_workspace` (Owner)
 
-Archiving moves a workspace out of your active list without deleting anything — "it'll move out of your active list; you can bring it back anytime from the **Archived** section." Archived workspaces stay fully readable to their existing members (and to external clients on shared projects — see [Clientside](/docs/user/clientside)); they just don't clutter the workbench. **Restore** returns it to Active at any time.
+Archiving moves a workspace out of your active list without deleting anything — "It'll move out of your active list. You can bring it back anytime from the **Archived** section." Archived workspaces stay fully readable to their existing members (and to external clients on shared projects — see [Clientside](/docs/user/clientside)); they just don't clutter the workbench. **Restore** returns it to Active at any time.
 
 ### Delete (permanent)
 
@@ -189,11 +189,11 @@ Deleting is permanent and gated behind a **type-the-workspace-name** confirmatio
 
 ### Locked (operator hold)
 
-Locking is **operator-only**. An operator locks or unlocks a workspace from its page in the operations area (`/operations/workspaces/<slug>`), or from the command line with `rails "workspaces:suspend[the-slug]"` and `rails "workspaces:unsuspend[the-slug]"`. While locked, owners and members are blocked from acting on the workspace and see **"This workspace is locked."** Locking is a temporary hold (billing, abuse review), distinct from Archive (owner tidying) and Delete (permanent). Both actions appear in the workspace's own activity feed as "locked the workspace" / "unlocked the workspace," naming the operator who did it.
+Locking is **operator-only**. An operator locks or unlocks a workspace from its page in the operations area (`/operations/workspaces/<slug>`), or from the command line with `rails "workspaces:suspend[the-slug]"` and `rails "workspaces:unsuspend[the-slug]"`. While locked, owners and members are blocked from acting on the workspace and see **"This workspace is locked."** Locking is a temporary hold (billing, abuse review), distinct from Archive (owner tidying) and Delete (permanent). Both actions appear in the workspace's own activity feed as "locked the workspace" / "unlocked the workspace," naming the operator who did it from the operations area; the command line has no signed-in operator, so its rows read **System**.
 
 ### Home workspaces are protected
 
-Your personal workspace — and, on a single-tenant (`:shared`) instance, the shared workspace — **cannot be archived or deleted**: there would be nowhere to land, so the Danger Zone doesn't appear for them. (An operator can still lock a shared workspace for maintenance.)
+Your personal workspace — and, on a single-tenant (`:shared`) instance, the shared workspace — **cannot be archived or deleted**: there would be nowhere to land, so the Danger zone doesn't appear for them. (An operator can still lock a shared workspace for maintenance.)
 
 ### Precedence
 
