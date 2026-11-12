@@ -134,9 +134,13 @@ OKLCH color-mix resolution varied across Chromium/Ubuntu builds. Direct
 literals are deterministic. See PR #81 for the change.
 
 The `primary_color` column on `workspaces` is an integer OKLCH hue (0–360)
-with default `210` (the app's sky base). When the column matches the
-default, the cascade computes values identical to the untouched tokens —
-no visual change. Explicit hue changes light up immediately.
+with default `210` (the app's sky base). Every organization workspace sets
+`--ws-primary-light`/`--ws-primary-dark` from its hue, default included
+(`Identity#hue` falls back to `210` when the column is empty). At `210` the
+result is close to, but not identical with, the untouched token:
+`oklch(0.40 0.15 210)` against `--primary-800` (Tailwind's sky-800).
+Personal workspaces take neither; they use a neutral slate
+(`[data-workspace-kind="personal"]`). Explicit hue changes light up immediately.
 
 **Contrast caveat.** The `oklch(0.40 0.15 <hue>)` formula yields AAA-level
 (7:1) contrast on white for most hues, but perceived lightness in OKLCH
