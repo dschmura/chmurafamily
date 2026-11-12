@@ -33,6 +33,7 @@ en:
         company_label: "Their company"
         submit: "Send client invite"
         link: "Invite a client"
+        ask_a_manager: "Ask a workspace owner or admin to invite clients."
   workspaces:
     projects:
       resources:
