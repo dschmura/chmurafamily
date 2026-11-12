@@ -93,7 +93,7 @@ Digest emails group notifications by category so they're easy to scan.
 
 ### 4. Quiet hours
 
-A do-not-disturb window. When quiet hours are active, in-app notifications are still recorded (you'll see them when the window ends), but you won't be interrupted.
+A do-not-disturb window. Some notifications that arrive during quiet hours are dropped rather than saved for later: the welcome note, a workspace you created or joined, members added to or removed from a workspace, and plan-capacity warnings. Everything else, such as invitation updates and role changes, is still recorded, and you'll see it when the window ends.
 
 **Security notifications always come through, regardless of quiet hours.** This is the same guarantee as the Notification Types section.
 
