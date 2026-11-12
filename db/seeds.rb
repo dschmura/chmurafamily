@@ -63,7 +63,8 @@ if TenancyConfig.shared?
       "Run `bin/rails tenancy:owner_setup_link` for a short-lived sign-in link " \
       "(minted on demand — not logged here)."
   else
-    AuthenticationMailer.password_reset_email(owner).deliver_now
+    token = MagicLinkToken.create_for_email(owner.email_address, intent: "set_password")
+    MagicLinkMailer.sign_in_link(owner.email_address, token).deliver_now
   end
 end
 

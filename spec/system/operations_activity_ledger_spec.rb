@@ -227,12 +227,13 @@ RSpec.describe "Operations activity ledger", type: :system do
   # resolved to the HIDDEN field and the visible date input had no accessible
   # name at all — an axe `label` violation only this state can produce.
   it "keeps the popover AAA-clean in both themes while a custom range is applied" do
-    visit operations_activity_logs_path(range: "custom", from: "2026-09-03", to: Date.current.iso8601)
+    to = Date.current
+    visit operations_activity_logs_path(range: "custom", from: "2026-09-03", to: to.iso8601)
     within_results { expect(page).to have_css("tbody tr", minimum: 1) }
 
-    click_button custom_range_trigger_label(Date.new(2026, 9, 3), Date.current)
+    click_button custom_range_trigger_label(Date.new(2026, 9, 3), to)
     expect(page).to have_field("from", with: "2026-09-03")
-    expect(page).to have_field("to", with: Date.current.iso8601)
+    expect(page).to have_field("to", with: to.iso8601)
     expect(axe_clean_in_both_themes?).to be(true), axe_violations_in_both_themes.join("\n")
   end
 
