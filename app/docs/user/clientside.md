@@ -53,7 +53,7 @@ Client invitations are sent from `Workspaces::Projects::ClientInvitationsControl
 
 When a client invite is accepted (`Invitation#accept_client_invitation!`):
 
-1. Confirms Clientside is still enabled on the project.
+1. Confirms the project hasn't been deleted and Clientside is still enabled on it.
 2. Creates a `ClientAccess` (or undiscards an existing discarded one).
 3. Stamps `user.onboarded_at` unless the user is already onboarded.
 
@@ -86,6 +86,7 @@ The `Clientside::` controller namespace hosts the read-only client experience:
 
 ```ruby
 def authenticated_home_path
+  resume_session
   user = Current.user
   if user && user.client_accesses.kept.exists? && user.memberships.kept.none?
     clientside_projects_path
@@ -108,4 +109,4 @@ end
 - **Richer client profiles** — add columns to `client_accesses` and surface them in the invite flow.
 - **Client notifications** — wire notifiers scoped to the client's `ClientAccess`.
 
-See [/docs/projects](/docs/user/projects) for the workspace-side project model and [/docs/security](/docs/developer/security) for the broader authentication and authorization posture.
+See [Project Collaboration](/docs/user/projects) for the workspace-side project model and [Security](/docs/developer/security) for the broader authentication and authorization posture.
