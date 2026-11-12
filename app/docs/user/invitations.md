@@ -6,15 +6,15 @@ keywords: invitation invite workspace project client accept decline block email-
 
 ## Receiving an invitation
 
-When an admin or project member invites you by email, you receive an invitation email with an **Accept** link. Invitations expire after 7 days; if yours has expired, ask the sender to resend it.
+When an admin or project member invites you by email, you receive an invitation email with an **Accept invitation** link (**View the invitation** in a client invitation). Invitations expire after 7 days; if yours has expired, ask the sender to resend it.
 
 There are three invitation types:
 
 | Type | Who sends it | Decline link included? |
 |------|-------------|----------------------|
-| Workspace member invitation | Workspace admin | Yes |
-| Project collaborator invitation | Project member | Yes |
-| Client invitation | Project member | Yes |
+| Workspace member invitation | Workspace owner or admin | Yes |
+| Project collaborator invitation | The project's creator | Yes |
+| Client invitation | Workspace owner or admin | Yes |
 
 ## Accepting an invitation
 
@@ -24,9 +24,9 @@ Click **Accept** in the email, sign in if prompted, and the invitation is accept
 
 ### If you are new to the app
 
-1. Click **Accept** in the email.
-2. You will be prompted to sign in — enter the **same email address** the invitation was sent to and complete magic-link registration (you will receive a sign-in email).
-3. The invitation is claimed once you verify the invited email address — not at the point of signup.
+1. Click the link in the email, then **Create an account to accept**.
+2. On the sign-in page, enter the **same email address** the invitation was sent to and complete magic-link registration (you will receive an email to create your account).
+3. The invitation is claimed when you create the account: following the emailed link already proved you own the address.
 
 See [Authentication](/docs/user/authentication) for how magic-link sign-in works.
 
@@ -38,7 +38,7 @@ The one exception: **magic-link invitations** (a shareable URL that an admin cop
 
 ## Declining an invitation
 
-Every invitation email in the table above includes a **Decline** link. Clicking it marks the invitation as declined — no account or membership is created. (The "expiring soon" reminder is a different email and links only to **Accept** — decline from the original invitation email.)
+Every invitation email in the table above includes a **Decline invitation** link. Clicking it marks the invitation as declined — no account or membership is created. (The "expiring soon" reminder is a different email and links only to **Accept invitation** — decline from the original invitation email.)
 
 Every invitation email also carries a **Don't invite me again** link. It opens a page that asks you to confirm; confirming declines the invitation and stops future invitations from that sender to your address. Only that link can do this: it exists in your email and nowhere else, which is how the app knows it is really you. Blocking is per-sender and per-address, and it needs no account. The decline page reminds you where the link is.
 
@@ -50,11 +50,11 @@ Blocks are per-address, so a block you made against a different address than the
 
 ## Client invitations
 
-A client invitation grants read-only access to specific resources within a single project via the client area. The invitation email uses the project name in the subject (not the workspace name).
+A client invitation grants read-only access to specific resources within a single project via the client area. The invitation email's subject names the app, not the project or the workspace; the project is named on the page the link opens.
 
 **Existing users** accepting a client invitation: one click and you land directly in the client area.
 
-**New users**: complete magic-link registration with the invited email address; the client access is granted once you verify that address.
+**New users**: complete magic-link registration with the invited email address; the client access is granted when the account is created.
 
 The same email-match guard applies — a leaked client invitation link cannot be redeemed by a different email address.
 
