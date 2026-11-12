@@ -95,7 +95,8 @@ a password login is refused. Details:
 
 In `config/deploy.yml`, set the server's address (exactly one), uncomment
 `proxy:` with your domain, match `builder.arch` to the server, and set
-`RAILS_HOST` and `BACKUP_PATH`. `bin/rails deploy:check` then says "Nothing here
+`RAILS_HOST` and `BACKUP_PATH`, plus `TENANCY_OWNER_EMAIL` on the shared
+preset. `bin/rails deploy:check` then says "Nothing here
 stops a deploy." Kamal runs the same check before every build, and stops a
 deploy that would fail. Point your domain at the server, then:
 
