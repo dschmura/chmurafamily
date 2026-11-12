@@ -421,7 +421,7 @@ All three scheduled in `config/recurring.yml` under the `production:` key — th
 
 ### `DigestMailerJob`
 
-**Scope strategy**: one indexed range scan against `user_preferences.digest_next_due_at` per run — no per-user polling. The index is **partial** (`WHERE digest_next_due_at IS NOT NULL` in `db/schema.rb`), so users without a digest schedule never appear in the scan at all; a user on `"instant"` frequency has `digest_next_due_at = nil` and is skipped by construction.
+**Scope strategy**: one indexed range scan against `user_preferences.digest_next_due_at` per run — no per-user polling. The index is **partial** (`WHERE digest_next_due_at IS NOT NULL` in `db/schema.rb`), so a user who has never chosen a digest never appears in the scan. A user who switches back to `"instant"` keeps a due time, because `reschedule_digest!` always writes one: the scan still picks them up once a cycle, `digest_enabled?` is false, and the job reschedules them without sending.
 
 For each due user:
 
@@ -429,7 +429,7 @@ For each due user:
 2. If non-empty: dispatches `NotificationMailer.digest(user, ids)` — **ids, not records** — and stamps `digest_last_sent_at = cycle_started_at`. The half-open window means a notification arriving while the mail is built sits above the new watermark and lands in the next cycle, rather than falling below a watermark stamped after delivery and never being selected. The mailer re-queries those ids `where(read_at: nil)` at delivery time and sends nothing if they have all been read since — so reading an item in-app suppresses its digest line, and a row deleted by retention between enqueue and render cannot raise `DeserializationError` and dead-letter the whole digest.
 3. Updates `digest_last_sent_at` + recomputes `digest_next_due_at` via `UserPreferences#reschedule_digest!`, which writes `NotificationPreferences#next_due_at` — the user's cadence (`daily` or `weekly`, stored in `notification_preferences`) in their own timezone (digest hour is hardcoded at 8 AM local)
 
-If quiet hours block delivery at the digest time, the digest is held until the window closes.
+If quiet hours are active when the digest comes due, the job sends nothing and reschedules to the next due time. `digest_last_sent_at` does not move, so those notifications carry into the next digest.
 
 **Cycle-boundary semantics**: dedupe between cycles is the half-open watermark, not a stamp on the notification. `cycle_started_at` is captured before the SELECT and becomes the next floor, so the windows tile exactly — no gap, no overlap. What suppresses a digest line is the recipient **reading** the item; the job marks nothing on the row itself. That is a deliberate change: `seen_at` was written only by this job, to itself, and read only by this job's own scope, so the digest deduped against its own bookkeeping and emailed people things they had already read. The accepted trade, stated: glancing at the list without opening an item does not suppress its digest line. If the downstream mail job fails after the watermark is stamped, those items do not re-enter a later digest — recovery is the in-app surface, which still shows them unread, plus the mail job's own retry policy.
 
