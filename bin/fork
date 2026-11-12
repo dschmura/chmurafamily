@@ -78,7 +78,8 @@ class ForkFlow
     ],
     "public/manifest.webmanifest"      => [ [ %("#{TEMPLATE_BRAND}"), :quoted_title ] ],
     ".github/workflows/docker_build.yml" => [ [ "#{TEMPLATE_TOKEN}:", :snake_colon ] ],
-    ".github/workflows/image_scan.yml"   => [ [ "#{TEMPLATE_TOKEN}:", :snake_colon ] ]
+    ".github/workflows/image_scan.yml"   => [ [ "#{TEMPLATE_TOKEN}:", :snake_colon ] ],
+    ".github/workflows/hotcell_image_scan.yml" => [ [ "#{TEMPLATE_TOKEN}-hotcell:", :snake_hotcell_colon ] ]
   }.freeze
 
   RENAME_FILES = SUBSTITUTIONS.keys.freeze
@@ -438,7 +439,8 @@ class ForkFlow
       module_decl:       "module #{camel}",
       snake:             snake,
       snake_colon:       "#{snake}:",
-      title:             title,
+      snake_hotcell_colon: "#{snake}-hotcell:",
+      title:            title,
       quoted_title:      %("#{title}"),
       open_quoted_title: %("#{title}),
       support_email:     support_email
