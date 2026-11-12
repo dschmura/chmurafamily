@@ -96,7 +96,9 @@ Or run `bin/rails db:seed` if you configured the shared-preset seed variables.
 4. From the same browser, navigate to `/session/new` and enter the invited email address.
    **Expect:** The `check_email` page renders (the session token satisfies `signups_open?`). Click the registration link in `/letter_opener`.
 5. Fill in first and last name and submit the `:new_registration` form (the email is pre-filled and already matches the invitation address).
-   **Expect:** You are signed in immediately. The email is verified inside the registration transaction. `commit_signup_atomically` claims the session's invitation through `PendingClaims` in that same transaction (email-match guarded) — because your proven email matches the invitation address, the invitation is accepted and you are added to the workspace. You are redirected to `root_path` with a success notice.
+   **Expect:** You are signed in immediately. The email is verified inside the registration transaction. `commit_signup_atomically` claims the session's invitation through `PendingClaims` in that same transaction (email-match guarded) — because your proven email matches the invitation address, the invitation is accepted and you are added to the workspace. You land in that workspace with a success notice.
+
+**Existing account signing in.** If the recipient already has an account, step 4 signs them in instead. An invitation sent to their email is claimed at sign-in and they land in the workspace; one with no email returns them to its accept page for a click.
 
 **Signed-in accept (POST path).** If the recipient is already signed in when they click the accept link:
 `POST /invitations/:token/accept` calls `Invitation.consume!` immediately (no deferred email-match check needed — the signed-in user's proven email is used). If the signed-in email does not match the invitation email, `Invitation::EmailMismatch` is rescued and a mismatch alert is shown; you are redirected to `root_path`.

@@ -113,6 +113,37 @@ module Authenticatable
         }
         sync_theme_cookie_to_preferences(user)
         detect_and_record_new_device(user)
+        claim_parked_invitation(user)
+      end
+    end
+
+    # Unlike a parked join link, an invitation addressed to this user's own email is
+    # theirs to claim; an emailless one is a bearer link, so it waits for a click.
+    def claim_parked_invitation(user)
+      token = session.delete(:pending_invitation_token)
+      invitation = token.presence && Invitation.find_by(token: token)
+      return unless invitation&.pending? && !invitation.expired?
+
+      if invitation.email.blank?
+        session[:return_to_after_authenticating] = accept_invitation_path(token: token)
+      else
+        Invitation.consume!(token: token, user: user, expected_email: user.email_address)
+        session[:return_to_after_authenticating] = invitation_landing_path(invitation)
+      end
+    rescue Invitation::EmailMismatch
+      flash[:alert] = t("invitation_accepts.create.email_mismatch")
+    rescue Invitation::NotAcceptable, ActiveRecord::RecordInvalid,
+           Workspace::AlreadyMember, Workspace::AtCapacity
+      flash[:alert] = t("invitation_accepts.create.acceptance_failed")
+    end
+
+    def invitation_landing_path(invitation)
+      if invitation.client_invite?
+        clientside_project_path(invitation.invitable)
+      elsif invitation.invitable_type == "Project"
+        workspace_project_path(invitation.invitable.workspace, invitation.invitable)
+      else
+        workspace_path(invitation.invitable)
       end
     end
 
