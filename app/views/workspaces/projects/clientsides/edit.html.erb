@@ -11,8 +11,12 @@
   <% end %>
 
   <div class="mt-8">
-    <%= link_to t("clientside.invitations.new.link"),
-          new_workspace_project_client_invitation_path(@workspace, @project),
-          class: "text-interactive font-medium hover:underline focus-ring rounded" %>
+    <% if policy(Invitation).new? %>
+      <%= link_to t("clientside.invitations.new.link"),
+            new_workspace_project_client_invitation_path(@workspace, @project),
+            class: "text-interactive font-medium hover:underline focus-ring rounded" %>
+    <% else %>
+      <p class="text-text-body"><%= t("clientside.invitations.new.ask_a_manager") %></p>
+    <% end %>
   </div>
 </div>
