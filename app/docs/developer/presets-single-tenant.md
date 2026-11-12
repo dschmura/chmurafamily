@@ -85,7 +85,7 @@ The workspace switcher stays, naming the shared workspace: with one membership i
 
 2. Run `bin/setup` (or `bin/rails db:seed` on an existing app). The seed is idempotent — safe to re-run.
 
-3. The seed creates the shared workspace and the Owner user (with a verified email Authentication and an Owner Membership). In development the password-set email is captured by **Letter Opener** — open `/letter_opener` to see it (it isn't sent over SMTP). In `production` it deliberately does **not** put a credential in the logs (a logged token would linger in log retention past its short expiry); instead it logs the workspace URL and points you to an on-demand task. Mint the Owner's sign-in link when you're ready to use it:
+3. The seed creates the shared workspace and the Owner user (with a verified email Authentication and an Owner Membership). In development it emails the Owner a sign-in link, captured by **Letter Opener**: open `/letter_opener` to see it (it isn't sent over SMTP). With passwords turned on, the link lands on the set-a-password form. In `production` it deliberately does **not** put a credential in the logs (a logged token would linger in log retention past its short expiry); instead it logs the workspace URL and points you to an on-demand task. Mint the Owner's sign-in link when you're ready to use it:
 
    ```bash
    bin/rails tenancy:owner_setup_link
