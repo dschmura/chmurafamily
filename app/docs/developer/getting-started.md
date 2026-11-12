@@ -87,10 +87,11 @@ Native development (no devcontainer) continues to work the same way as before �
 
 ## Choose your app preset
 
-modelrails_base supports several distinct product shapes — solo prosumer, internal single-tenant, multi-tenant SaaS — all built on the same multi-tenant data layer underneath. Before you start customizing, read [App Presets](/docs/developer/presets) to identify which shape matches what you're building. The defaults you just installed are the **Solo-default** preset; additional presets ship as they're built.
+modelrails_base supports several distinct product shapes — solo prosumer, internal single-tenant, multi-tenant SaaS — all built on the same multi-tenant data layer underneath. Before you start customizing, read [App Presets](/docs/developer/presets) to identify which shape matches what you're building. The defaults you just installed are the **Solo-default** preset (`personal`).
 
 If you are forking the template, `bin/fork --preset personal|shared|none` records the
-choice and writes it to `.env` — see [Forking](/docs/developer/forking). Switching
+choice in `.fork.yml`, which is committed: production reads it from there, and `bin/setup`
+copies it into each clone's `.env` — see [Forking](/docs/developer/forking). Switching
 later is a migration, not a config flip, so it is worth deciding up front.
 
 ## Running Tests
@@ -104,7 +105,7 @@ bundle exec rspec --format documentation # Verbose output
 `bin/parallel-rspec` splits the suite across your CPU cores (each worker gets
 its own SQLite database and browser) and adds two integrity gates: the executed
 example count must match a dry-run enumeration, and the merged coverage must
-meet the 40% floor. Each run records per-file timings to
+meet the 90% floor. Each run records per-file timings to
 `tmp/parallel_runtime_rspec.log`, so the next run balances workers by measured
 runtime instead of file size (it falls back to file size when the log is
 absent). Coverage report is generated at `coverage/index.html`.
@@ -234,6 +235,7 @@ Runs automatically when you `git push`. `bin/setup` installs the hooks; in a clo
 | Code style | RuboCop |
 | ERB templates | erb_lint |
 | Markdown | `mdl` |
+| Workflows | `jactionlint`, only when the branch changes something under `.github/` or `mise.toml`/`mise.lock` |
 | Full test suite | `bin/parallel-rspec`, including the axe-core WCAG 2.2 AAA audit on every system spec |
 | Hot Cell image | `docker build --pull hotcell`, only when the branch changes something under `hotcell/`; the build installs libheif's HEVC and AV1 decoders by name and fails unless libvips registers its HEIF loader |
 | Production image | `docker build`, last, and only when the branch changes a build input (`Dockerfile`, `.dockerignore`, `Gemfile`, `Gemfile.lock`, `.tool-versions`, `bin/docker-entrypoint`); refuses the push if Docker isn't running |
@@ -249,12 +251,13 @@ Runs the same checks plus additional linting:
 | Job | What it checks |
 |-----|---------------|
 | `static` | One job for every static check: Brakeman, bundler-audit (gem CVEs), the importmap audit (JS dependency CVEs), RuboCop with GitHub annotations, the comment-block gate over the PR's diff, `mdl` (markdown) and `erb_lint` (ERB). Each check runs even after an earlier one fails, so one push reports every failure. They were four jobs; one runner minute bills for what took four. |
-| `test` | Full RSpec with Cuprite, axe accessibility, screenshot artifacts on failure |
+| `test_shard` | The full RSpec suite with Cuprite and the axe accessibility audit, split across parallel shards (eight by default, set by the `CI_SHARDS` repository variable); each uploads screenshots when it fails |
+| `test` | Passes only when every shard passed, then checks the merged results: every example ran, and coverage meets the 90% floor. This is the check the branch ruleset requires by name |
 | `docker_build` | Verifies the production `Dockerfile` builds (catches build-time regressions that structural specs cannot). Its own workflow, run on every push to `main`, unfiltered. A pull request that changes a build input (`Dockerfile`, `.dockerignore`, `Gemfile`, `Gemfile.lock`, `.tool-versions`, `bin/docker-entrypoint`) gets the same proof from `image_scan`, which builds the identical image from scratch, so `docker_build` runs on a pull request only when its own workflow changes. The pre-push hook runs the same build locally through `bin/docker-build-check` on the same inputs. Uses GHA layer caching — cold builds ~3-5 min, warm builds ~30-60s. See [Deployment](/docs/developer/deployment). |
 
 ### Gate 3: Scheduled lanes (not on push/PR)
 
-Four checks answer questions a per-PR run cannot, because what they watch changes without anyone committing. Each also runs on demand from the Actions tab (`workflow_dispatch`).
+Six checks answer questions a per-PR run cannot, because what they watch changes without anyone committing. Every one but `workflow_audit` also runs on demand from the Actions tab (`workflow_dispatch`).
 
 | Workflow | When | What it checks |
 |----------|------|---------------|
@@ -262,16 +265,20 @@ Four checks answer questions a per-PR run cannot, because what they watch change
 | `image_scan` | Weekly, plus every PR that changes a build input | OS-package CVEs in the production image, which appear without any code change. It builds the image from scratch, so on those PRs it is also the proof that the image builds. |
 | `hotcell_image_scan` | Weekly where the `HOTCELL_SCAN` repository variable is set, plus every PR that changes `hotcell/` | The same scan of the [Hot Cell](/docs/developer/hot-cell) image. A fork that keeps the cell off leaves the variable unset and pays for no weekly build. |
 | `fork_vocabulary` | Weekly | The whole suite under `spec/fixtures/vocabulary.course.yml`, proving the promise that a fork renaming its nouns keeps this suite green. The per-PR gate catches literal-noun copy assertions in the shapes it knows; this catches the rest. |
+| `devcontainer` | Weekly, plus every PR that changes `.devcontainer/`, `Dockerfile`, `Gemfile.lock`, `.tool-versions` or `bin/setup` | Builds the Dev Container and runs its setup, which a change to the base image or a feature can break with no commit here. |
+| `workflow_audit` | Weekly, plus every PR that changes `.github/` or `mise.toml`/`mise.lock` | `jactionlint` over the workflows and `dependabot.yml`; the weekly run catches a pinned action archived or advised against since. |
 
-**Scheduled workflows switch themselves off in an inactive public repository.** GitHub disables them after 60 days with no repository activity — see [Events that trigger workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows) (`schedule`). The condition is repository *visibility*, so a private fork is not affected; a public fork that goes quiet loses these four lanes silently and re-enables them with any repository activity.
+**Scheduled workflows switch themselves off in an inactive public repository.** GitHub disables them after 60 days with no repository activity — see [Events that trigger workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows) (`schedule`). The condition is repository *visibility*, so a private fork is not affected; a public fork that goes quiet loses these six lanes silently and re-enables them with any repository activity.
 
 ### Development Workflow
 
-1. Create a feature branch: `git checkout -b my-feature`
+1. Create a feature branch from `next`: `git switch -c my-feature origin/next`
 2. Write tests, implement, verify locally: `bin/parallel-rspec`
 3. Commit (pre-commit hook auto-fixes Ruby style)
 4. Push (pre-push hook runs full CI locally)
-5. Open PR on GitHub (Actions run second round of checks)
+5. Open a PR into `next` on GitHub (Actions run second round of checks)
+
+`next` gathers merged work until a release ships it to `main`; see [Releasing](/docs/developer/releasing).
 
 ### Turning a house cop off in your fork
 
@@ -332,5 +339,6 @@ oauth:
 
 ## Next steps
 
-1. **[Choose your app shape →](/docs/developer/presets)** — Solo, Single-tenant, or Open SaaS. This is the most important decision; it sets signup, onboarding, and workspace behavior.
-2. **[Extend the framework →](/docs/developer/extending)** — add your own workspace-scoped models, authorization, and features.
+1. **[Choose your app shape →](/docs/developer/presets)** — Solo-default, Single-tenant, Open SaaS, or Workspace-optional. This is the most important decision; it sets signup, onboarding, and workspace behavior.
+2. **[Fork to Served →](/docs/developer/quickstart)** — every step from a clone to a deployed product you can sign in to.
+3. **[Extend the framework →](/docs/developer/extending)** — add your own workspace-scoped models, authorization, and features.
