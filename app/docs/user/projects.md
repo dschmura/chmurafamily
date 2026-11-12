@@ -1,7 +1,7 @@
 ---
 title: Project Collaboration
 description: Creating projects, managing members, inviting collaborators, working with resources, and enabling project tools and clientside access
-keywords: project members collaboration resources documents invitations roles creator editor viewer pin reposition tools clientside client
+keywords: project members collaboration resources documents invitations roles creator editor viewer reposition tools clientside client
 ---
 
 # Project Collaboration
@@ -25,10 +25,10 @@ Project-level roles are simpler than workspace roles, using a three-tier enum:
 | Role | Can edit resources | Can manage members | Assigned how |
 |------|-------------------|-------------------|--------------|
 | **Creator** | Yes | Yes | Automatically on creation |
-| **Editor** | Yes | No | Invitation or member add |
+| **Editor** | Their own | No | Invitation or member add |
 | **Viewer** | No | No | Invitation or member add |
 
-Project roles are checked via `ProjectMembership#role` (an enum), not via the JSON permissions system used at the workspace level.
+Project roles are checked via `ProjectMembership#role` (an enum), not via the JSON permissions system used at the workspace level. A member keeps the role they were added with; there is no control yet for changing it.
 
 ## Managing Project Members
 
@@ -50,21 +50,9 @@ Invite someone who isn't yet a workspace member:
 
 This dual-level acceptance happens atomically in `Invitation#accept!`.
 
-### Changing Roles
-
-Update a member's project role between creator, editor, and viewer.
-
 ### Removing Members
 
 Destroy the `ProjectMembership` record. The user remains a workspace member.
-
-## Pinning Projects
-
-Users can pin their favorite projects for quick access:
-
-**Routes:** `POST /workspaces/:slug/projects/:slug/pin` (pin) and `DELETE` on the same path (unpin) — a singular end-state resource, so retried requests are idempotent rather than toggling.
-
-The controller finds your membership via `Current.user` (never a URL param) to prevent IDOR attacks. Pinned projects appear first in the project list.
 
 ## Resources
 
@@ -113,7 +101,7 @@ See the [Extending](/docs/developer/extending) guide for how to add new resource
 
 Each project has an independently configurable set of **tools** — navigable sections of the project (for example, the docs area). Tools appear as a tab bar on the project home page.
 
-**Configuration route:** `GET/PATCH /workspaces/:slug/projects/:slug/tools`
+**Configuration route:** `GET /workspaces/:slug/projects/:slug/tools/edit` · `PATCH /workspaces/:slug/projects/:slug/tools`
 **Controller:** `Workspaces::Projects::ToolsController`
 
 The available tool catalogue is defined in code via `ProjectTools::Registry` (see `app/lib/project_tools/`). Each `ProjectTools::Tool` entry declares a key, a route-helper name, and whether it is enabled by default. New tools are registered in `config/initializers/project_tools.rb` using `ProjectTools::Registry.register(...)`.
@@ -133,7 +121,7 @@ A project can optionally expose a read-only **client area** to external users wh
 
 **Enabling clientside:**
 
-`GET/PATCH /workspaces/:slug/projects/:slug/clientside`
+`GET /workspaces/:slug/projects/:slug/clientside/edit` · `PATCH /workspaces/:slug/projects/:slug/clientside`
 `Controller: Workspaces::Projects::ClientsidesController`
 
 Toggle the `clientside_enabled` flag on the project. When disabled, client invitations cannot be sent and the client area is inaccessible.
