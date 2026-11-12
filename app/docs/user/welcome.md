@@ -6,16 +6,18 @@ keywords: welcome get started sign in passkey magic link account workspace
 
 # Welcome
 
-This app is built on [ModelRails](https://github.com/modelrails), a production-ready Rails
+This app is built on [ModelRails](https://github.com/dschmura/modelrails_base), a production-ready Rails
 application template designed for teams who need accounts, workspaces, and collaboration out
 of the box.
 
 ## Signing in
 
-You sign in with a **magic link** or a **passkey** — no password required.
+You sign in with a **magic link**, a **passkey**, or a **Google** or **GitHub** account where
+the app offers one — no password required.
 
-- **Magic link** — enter your email address and follow the one-click link sent to your inbox.
+- **Magic link** — enter your email address, open the link sent to your inbox, and press **Sign in**.
 - **Passkey** — use Face ID, Touch ID, or a hardware security key registered to your device.
+- **Google or GitHub** — press **Sign in with Google** or **Sign in with GitHub** on the sign-in page.
 
 Full details on sign-in options and account security are in [Authentication](/docs/user/authentication).
 
@@ -40,5 +42,5 @@ See [Invitations](/docs/user/invitations) for the full flow.
 
 ## Need help?
 
-Browse the topics in the sidebar, or use the search bar at the top of this page to find
-what you are looking for.
+Browse the topics on the [docs home](/docs), or use the search bar there to find what you
+are looking for.
