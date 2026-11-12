@@ -192,7 +192,9 @@ so touching every workspace is just what "in batches" naturally does:
 
 ```ruby
 # ActivityLogRetentionSweepJob — 12-month retention window, no workspace filter
-ActivityLog.where(created_at: ...RETENTION_WINDOW.ago).in_batches(of: 100, &:delete_all)
+ActivityLog.where(created_at: ...RETENTION_WINDOW.ago)
+           .where.not(action: ActivityLog::SECURITY_ACTIONS)
+           .in_batches(of: 100, &:delete_all)
 
 # WorkspaceInvitationExpiringSweepJob — every workspace's expiring invitations at once
 Invitation.where(accepted_at: nil, declined_at: nil)
@@ -200,7 +202,8 @@ Invitation.where(accepted_at: nil, declined_at: nil)
           .find_each { |invitation| ... }
 
 # DigestMailerJob — User isn't even Tenanted, but the same shape applies
-User.joins(:preferences)
+User.not_suspended
+    .joins(:preferences)
     .where("user_preferences.digest_next_due_at <= ?", Time.current)
     .find_each { |user| ... }
 ```
@@ -238,8 +241,10 @@ signed-in operator's own reach relation:
 
 ```ruby
 # app/models/user.rb
-def operated_workspaces
-  operator? ? Workspace.kept : Workspace.none # scoped operators narrow this branch later
+def operated_workspaces(include_discarded: false)
+  return Workspace.none unless operator?
+
+  include_discarded ? Workspace.all : Workspace.kept
 end
 ```
 
@@ -250,7 +255,8 @@ end
 
 `Workspace` isn't `Tenanted`, so `no_unscoped_tenant_loads_spec.rb` wouldn't
 flag a bare `Workspace.find_by!` here — but the relation form is the point,
-not a guard dodge. `operated_workspaces` is every kept workspace today; it's
+not a guard dodge. `operated_workspaces` is every kept workspace today (the activity ledger
+alone passes `include_discarded: true`); it's
 also the one seam a future scoped-operator model changes, and every
 operations controller reading through it (rather than each reinventing "all
 workspaces") is what makes that a one-method change instead of an audit.
@@ -312,7 +318,7 @@ app/views/workspaces/projects/resources/types/_slideshow.html.erb
 app/views/workspaces/projects/resources/types/_slideshow_form.html.erb
 ```
 
-The controller automatically renders the correct partial based on `resourceable_type`.
+The resource `new`, `edit`, and `show` views render the matching partial by `resourceable_type`.
 
 ### 4. Add strong parameters
 
@@ -413,7 +419,7 @@ Biscuit::Consent.new(cookies).allowed?(:analytics)
 
 ### Disabling the banner
 
-If your deployment only uses functional cookies (session, theme, CSRF), you can remove the banner by deleting `<%= biscuit_banner %>` from both layouts.
+If your deployment only uses functional cookies (session, theme, CSRF), you can remove the banner by deleting `<%= biscuit_banner %>` from `app/views/shared/_layout_tail.html.erb` (the tail the app's layouts share) and from `app/views/layouts/markdowndocs/application.html.erb`.
 
 ## Invitation Types
 
@@ -508,15 +514,14 @@ Gate a tool's controller so its routes redirect back to project home when the to
 ```ruby
 class Workspaces::Projects::MessagesController < ApplicationController
   include WorkspaceScoped
+  include ProjectScoped            # resolves @project; must come BEFORE enforces_tool
   include EnforcesProjectTool
   enforces_tool :messages          # redirects if tool_enabled?(:messages) is false
-
-  before_action :set_project       # must run BEFORE the EnforcesProjectTool guard
   # …
 end
 ```
 
-The `EnforcesProjectTool` concern reads `@project.tool_enabled?(key)`, so `set_project` must populate `@project` before the guard fires. See [Project Tools](/docs/user/project-tools) for the full how-to.
+The `EnforcesProjectTool` concern reads `@project.tool_enabled?(key)`, and `enforces_tool` registers its guard where it is declared, so `ProjectScoped` must be included first; a guard that finds no `@project` lets the request through. See [Project Tools](/docs/user/project-tools) for the full how-to.
 
 ## Clientside (external-client area)
 

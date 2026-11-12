@@ -36,7 +36,7 @@ The attachment guard (`spec/code_smells/attachments_are_validated_spec.rb`, see 
 - `config/initializers/hotcell.rb` is the only switch. It registers the `active_storage` cell and, when `HOTCELL_ROOT` is set, points `variant_processor` and `analyzers` at the Hot Cell classes and sets `previewers` to `[]`. No environment file mentions Hot Cell.
 - `hotcell/` is the cell image: `Dockerfile`, `Gemfile` and `Gemfile.lock`, `config.rb` (limits) and `operations/` (what the cell serves). It installs libvips and libheif's HEVC and AV1 decoders by name and nothing else, and its build fails unless libvips registers its HEIF loader.
 - A failed variant answers its image request instead of raising: a permanent failure redirects to a placeholder image, and a transient one (a cell restarting or unreachable) answers 503 `no-store`, so the next page view fetches it again ([Security](/docs/developer/security), Image Processing).
-- Gates: `hotcell_build` builds the image pre-push when `hotcell/` changes; `bundler-audit check hotcell` audits its gems pre-push and in CI; `hotcell_image_scan.yml` scans it with Trivy; template invariants keep the two lockfiles on one Hot Cell version and the cell's operations equal to what the initializer routes.
+- Gates: `hotcell_build` builds the image pre-push when `hotcell/` changes; `bundler-audit check hotcell` audits its gems pre-push and in CI; `hotcell_image_scan.yml` scans it with Trivy on pull requests that change `hotcell/`, and weekly once the `HOTCELL_SCAN` repository variable is `true`; template invariants keep the two lockfiles on one Hot Cell version and the cell's operations equal to what the initializer routes.
 
 ## Turn it on
 
@@ -53,7 +53,7 @@ These steps are for a fork's production host. Run them in order.
 
    `--platform` matches `builder.arch` in `config/deploy.yml`; an image built on Apple silicon without it fails on the host with `exec format error`.
 
-2. **Edit `config/deploy.yml`, merging into the keys it already has.** `servers:`, `volumes:` and `env:` are already there: add these lines inside them, and never add a second `volumes:` or `env:`. YAML keeps only the last of two keys with one name, and Kamal then deploys without the storage volume that holds SQLite and the uploads, or without your secrets — and the check in step 3 still passes. `volumes:` is the top-level key (Kamal roles have no `volumes:`). The volume name carries the app's name so two apps on one host never share a socket directory; `bin/fork` renames it with the rest of the file.
+2. **Edit `config/deploy.yml`, merging into the keys it already has.** `servers:`, `volumes:` and `env:` are already there: add these lines inside them, and never add a second `volumes:` or `env:`. YAML keeps only the last of two keys with one name, and Kamal then deploys without the storage volume that holds SQLite and the uploads, or without your secrets — and the check in step 3 still passes. `volumes:` is the top-level key (Kamal roles have no `volumes:`). The volume name carries the app's name so two apps on one host never share a socket directory. `bin/fork` doesn't rewrite this page, so in a fork replace `modelrails_base` in the sample with your app's name, the one `bin/fork` put in the storage volume's name in `config/deploy.yml`.
 
    ```yaml
    servers:
