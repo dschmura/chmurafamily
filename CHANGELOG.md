@@ -4,6 +4,66 @@ All notable changes to ModelRails are documented here, organized by phase.
 
 ## [Unreleased]
 
+## v2026.11.13
+
+### Fixed
+
+- The Accessibility guide no longer lists code blocks and mailer templates as outside the AAA gate, and it names every check the gate runs.
+- The Accounts and Identity page names the `personal` workspace flag, the two `SIGNUP_MODE` values, and the Presets page for the four presets.
+- The Application Flows page says passwords are an instance opt-in, and that a full workspace at email verification becomes a flash, not an error.
+- The Architecture page says a personal workspace on sign-up is the default preset's behavior, not every app's.
+- The Background Jobs page lists all eleven recurring jobs, including the daily database backup, and describes the queue database, the Puma plugin and Mission Control as they ship.
+- The UI Components page shows the two-axis button API, drops the combobox and generator caveats the gem has since resolved, and credits the badge's soft/neutral proof to the spec that holds it.
+- The Code Conventions page says which file types the comment-length check reads, so an unchecked `bin/` script is no longer implied to be covered.
+- The Deployment page's "Add CI" fnox step pins jdx/mise-action at v5.2.4, the version the template's own workflows run.
+- The Extending page's project-tool guard example includes `ProjectScoped` before `enforces_tool`, and its job, operator and cookie-banner details match the code.
+- The Forking page mentions the mail setup offer, lists what reads `.fork.yml`, and its first-sync recipe copies `lib/fork_config.rb`.
+- The Getting Started page describes CI, the coverage floor, presets and the branch workflow as they work today.
+- The Hot Cell page tells a fork to put its own app name in the sample's volume names, and says weekly cell scans need `HOTCELL_SCAN`.
+- The Internationalization page's validation-message example uses the `%{workspaces}` vocabulary token, and its `_html` example names the full key.
+- The Identity System page gives the avatar removal route, the HEIC/HEIF uploads, and the initials colour in both themes as they are now.
+- The Membership Lifecycle page names the spec files and examples that pin each rule, and the association the members page reads.
+- The Notifications technical reference now matches the code: the assertive live region for danger arrivals, where the severity rank and summary live, the notifier example, the jobs and index it describes, and what the digest does during quiet hours and for instant users.
+- The Passkeys page gives a local HTTPS command that works (Puma's `ssl://` bind; `rails s` has no `--ssl`), and describes the passkey list and enrollment banner as they behave.
+- The App Presets page says all four presets ship, and names the `bin/fork --preset` value for each.
+- The Workspace-optional preset page's console check runs again, and its sign-up walkthrough follows the magic-link flow that ships.
+- The Open SaaS preset page names the real sign-up path, points to the operations area for instance administration, and says what a full workspace does to a join-link signup.
+- The Single-tenant preset page describes the workspace switcher, the Owner's setup link and where the Owner lands as they work today.
+- The Solo-default preset page's console check runs again, and its knobs, landing page and switch-presets advice match what ships.
+- The QA walkthroughs page marks the password steps as needing `AUTH_PASSWORDS=enabled`, and its join-link, client-invite, settings and operations steps name the buttons and messages the app shows today.
+- Fork to Served's deploy step names `TENANCY_OWNER_EMAIL`, which the deploy check requires on the shared preset.
+- The Releasing page says only a fork made before `bin/fork` started its changelog clean carries the template's release sections.
+- The Security page names today's auth routes, the self-serve Blocked senders page, the shipped HTTPS defaults, and how the Rails pin is guarded.
+- The Testing page gives the passkey specs' real test origin, `http://localhost:3000`, and says `bin/parallel-rspec` builds Tailwind before its workers start.
+- The Troubleshooting page names the controller that rate-limits invitation resends, and the task that makes the Markdowndocs symlink Tailwind scans.
+- The UI Patterns page now points rethemes at `_brand.css` and lists the modal sizes, toast tiers, icon sizes and footer classes the code ships.
+- The Account Management page gives the `/settings/...` routes, says what linking Google or GitHub with a different email does, and which sign-in method you can't disconnect.
+- The Authentication page quotes the sign-in email and confirmation page as they read, names the Security and Active devices settings pages, and describes password reset where passwords are on.
+- The Clientside page shows `authenticated_home_path` as the code has it and names its related pages by title.
+- The Email Flows page lists every mailer, says when the verification email is sent and who can send project and client invitations, and points at each mailer's locale file.
+- The Invitations page names who can send each kind of invitation, the email links as they read, and the moment a new account claims its invitation.
+- The Notifications page describes the avatar's unread dot and the user menu's Notifications row in place of the removed bell and dropdown, gives the `/settings/...` addresses, and says which notifications quiet hours drop.
+- The Onboarding Journey page lists every action that finishes onboarding, and says how the email-verification link confirms before it verifies.
+- The Project tools page calls the tool the template ships by the name the app shows, Docs & Files.
+- The Project Collaboration page says editors edit their own resources, gives the tools and Clientside settings routes as they are, and stops promising pinning and role changes the app doesn't offer.
+- The Welcome page lists Google and GitHub sign-in, links to the real ModelRails repository, and sends readers to the docs home for search.
+- The Workspace Administration page says who can view members, how the members list filters and sorts, and what Resend does to an invitation's expiry.
+- The notification retention help points to the Active devices page, where your security history is listed, instead of the Security page.
+- Client access settings offer "Invite a client" only to someone who can invite; a project creator who is a workspace Member is told to ask an owner or admin instead of being sent to a refusal.
+- `bin/fork` renames the Hot Cell image tag in `hotcell_image_scan.yml`, so its verify sweep no longer reports that workflow as a missed rename.
+- An existing user who signs in from an invitation sent to their email is added to the workspace and lands in it; a new account that registers from an invitation lands in the invited workspace instead of the home page.
+- The activity ledger's custom-range spec no longer fails when it runs across midnight UTC.
+- Seeding development under the Single-tenant preset no longer crashes; it emails the Owner a sign-in link.
+- A browser timeout in a signup system spec no longer fails dozens of unrelated specs in the same test worker.
+
+### Added
+
+- Settings → Security offers a Connect button for each enabled sign-in provider (Google, GitHub) the account hasn't linked yet.
+
+### Removed
+
+- The old `/settings/connected_accounts/verify/:token` link format is gone; connected-account verification emails have used the query-string link since the 2026-09 release.
+
 ## v2026.11.11-3
 
 ### Fixed
