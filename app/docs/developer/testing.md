@@ -181,7 +181,7 @@ The audits are memoized per example on page state + options, so an example that 
 
 `spec/support/webauthn_virtual_authenticator.rb` provides `with_virtual_authenticator { ... }`, which enables CDP's virtual authenticator (ctap2/internal, resident-key, `automaticPresenceSimulation: true`) so a system spec can drive real `navigator.credentials.create`/`get` calls with every gesture auto-approved.
 
-The subtle part is **origin alignment**: the WebAuthn RP origin from the initializer is `http://localhost`, but Capybara binds its test server to `127.0.0.1:<dynamic port>` — and WebAuthn treats `127.0.0.1` and `localhost` as *different* origins. The helper temporarily sets `Capybara.app_host` to `http://localhost:<port>` so the browser's origin matches, and extends `WebAuthn.configuration.allowed_origins` to that exact URL (the port matters for the gem's origin check). Both are restored after the block.
+The subtle part is **origin alignment**: the WebAuthn RP origin from the initializer is `http://localhost:3000` in test (the mailer host and port), but Capybara binds its test server to `127.0.0.1:<dynamic port>` — and WebAuthn treats `127.0.0.1` and `localhost` as *different* origins. The helper temporarily sets `Capybara.app_host` to `http://localhost:<port>` so the browser's origin matches, and sets `WebAuthn.configuration.allowed_origins` to that exact URL (the port matters for the gem's origin check). Both are restored after the block.
 
 ## Troubleshooting the suite
 
@@ -200,7 +200,7 @@ The guard lives in the spec boot path rather than a wrapper script on purpose: a
 
 System specs load the compiled Tailwind stylesheet from the test server. When it is missing, axe reports contrast violations on every page and interaction specs fail on collapsed layout — 132 failures that name neither Tailwind nor assets. `spec/support/compiled_assets_guard.rb` checks for `app/assets/builds/tailwind.css` before each system spec and fails with the actual fix: `bin/rails tailwindcss:build`.
 
-The hole is easy to fall into: `assets:clobber` (which `bin/setup` runs deliberately) also deletes the compiled stylesheet, and the tailwindcss-rails safety net that rebuilds it hooks `test:prepare` — the Minitest path, which `bundle exec rspec` never invokes. The guard is read-only by design: building the CSS from inside the suite would race, since `bin/parallel-rspec` boots one RSpec process per core.
+The hole is easy to fall into: `assets:clobber` (which `bin/setup` runs deliberately) also deletes the compiled stylesheet, and the tailwindcss-rails safety net that rebuilds it hooks `test:prepare` — the Minitest path, which `bundle exec rspec` never invokes. The guard is read-only by design: building the CSS from inside the suite would race, since `bin/parallel-rspec` boots one RSpec process per core. That is why `bin/parallel-rspec` runs `tailwindcss:build` once itself, before any worker starts; the guard fires on runs that skip that step, such as a bare `bundle exec rspec` after `bin/setup --skip-server`.
 
 ## Next steps
 

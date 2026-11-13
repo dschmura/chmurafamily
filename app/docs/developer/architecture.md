@@ -10,7 +10,7 @@ keywords: models workspace project resource membership pundit authorization turb
 
 ```
 User
-  └── Workspace (personal, auto-created on sign-up)
+  └── Workspace (personal, auto-created on sign-up under the default preset)
   └── Workspace (organizational, created manually)
         ├── Membership (user + Role with permissions JSON)
         ├── Invitation (polymorphic — workspace or project or client)
@@ -23,7 +23,7 @@ User
 
 ## Key Concepts
 
-**Workspace** — organizational boundary. Billing, roles, member management. Every user has a personal workspace created on sign-up.
+**Workspace** — organizational boundary. Billing, roles, member management. Under the default preset (Solo-default) every user gets a personal workspace on sign-up; the other [presets](/docs/developer/presets) put new users in one shared workspace or in none.
 
 **Project** — collaboration boundary. Lightweight, purpose-driven. Who works together on what. Created only through `Workspace#create_project` (atomic with the creator's project membership). Lifecycle asymmetry is deliberate: an **archived** workspace still accepts new projects — archive means "no new people, existing work continues" — while a **suspended** (locked) workspace refuses them; suspension raises a disclosing `SuspendedError` to members where `Workspace#admit` raises the non-disclosing `NotAdmittableError` to outsiders.
 
@@ -56,7 +56,7 @@ The `Clientside::` controller namespace is a distinct, authenticated access axis
 
 The template runs on single-host SQLite in WAL mode. WAL admits many concurrent readers but still exactly **one writer at a time** — every write transaction is serialized by a database-level writer lock. Two consequences shape how multi-row invariants are enforced:
 
-- **Lock-then-guard is atomic.** Rails 8.1's SQLite adapter opens write transactions with `BEGIN IMMEDIATE`, taking the writer lock *before* the first read. So a `transaction { lock!; guard; mutate }` block is genuine check-then-act, not a TOCTOU window. (One adapter quirk: `lock!` raises on records with unsaved changes, so these guarded mutators require clean records.)
+- **Lock-then-guard is atomic.** Rails's SQLite adapter opens write transactions with `BEGIN IMMEDIATE`, taking the writer lock *before* the first read. So a `transaction { lock!; guard; mutate }` block is genuine check-then-act, not a TOCTOU window. (One adapter quirk: `lock!` raises on records with unsaved changes, so these guarded mutators require clean records.)
 - **Row-level `lock!` is not a cross-connection lock.** SQLite locks are per-connection, so `workspace.lock!` in a pre-flight validation is silently a no-op against a racing connection. Pre-flight checks therefore exist for their *user-facing error message*, not for safety. The safety comes from re-checking the invariant **after** the write, inside the same transaction: by that point the database's writer lock has already serialized the transaction against any racer, so a `COUNT`/`EXISTS` there reflects committed state — including a racer that slipped in first. If the invariant is broken, the check raises and the whole transaction rolls back.
 
 This is also the shape of the **creation verb** on an aggregate root — `Workspace#create_project`, `Workspace.create_owned`: a verb on the tenant root wrapping `lock!` + lifecycle guard + every row of the assembly (record plus its membership) in one transaction, returning the possibly-invalid record for form re-render, with deliberately no bang twin until a non-form caller exists. Any create that needs a second row to be usable takes this shape; two sequential writes reproduce the orphaned-record class #660/#676 closed. A follow-up that enqueues (an invitation's mail) sits outside the verb's transaction; `Workspace.create_for_owner_email` composes `create_owned` with `Invitation.bulk_invite!` in that order for exactly this reason.

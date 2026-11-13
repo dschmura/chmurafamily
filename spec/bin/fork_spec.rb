@@ -63,7 +63,8 @@ RSpec.describe ForkFlow do
       "config/locales/en/pages.en.yml" => %(en:\n  pages:\n    brand: "ModelRails"\n    address: "support@example.com"\n),
       "public/manifest.webmanifest" => %({"name": "ModelRails"}\n),
       ".github/workflows/docker_build.yml" => "jobs:\n  build:\n    image: modelrails_base:latest\n",
-      ".github/workflows/image_scan.yml" => "jobs:\n  scan:\n    image: modelrails_base:latest\n"
+      ".github/workflows/image_scan.yml" => "jobs:\n  scan:\n    image: modelrails_base:latest\n",
+      ".github/workflows/hotcell_image_scan.yml" => "jobs:\n  scan:\n    image: modelrails_base-hotcell:scan\n"
     }.each do |path, content|
       full = repo.join(path)
       FileUtils.mkdir_p(full.dirname)
@@ -389,6 +390,7 @@ RSpec.describe ForkFlow do
       expect(repo.join("config/locales/en/brand.en.yml").read).to include("My App")
       expect(repo.join("public/manifest.webmanifest").read).to include("My App")
       expect(repo.join(".github/workflows/docker_build.yml").read).to include("my_app:")
+      expect(repo.join(".github/workflows/hotcell_image_scan.yml").read).to include("my_app-hotcell:")
     end
 
     it "replaces the template support address with an unmistakable placeholder" do

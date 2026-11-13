@@ -38,6 +38,41 @@ RSpec.describe "Account Connected Accounts", type: :request do
       end
     end
 
+    describe "GET /account/connected_accounts (connecting a provider)" do
+      before do
+        allow(Rails.application.credentials).to receive(:dig).and_call_original
+        allow(Rails.application.credentials).to receive(:dig)
+          .with(:oauth, :google, :client_id).and_return("test-google-client-id")
+        allow(Rails.application.credentials).to receive(:dig)
+          .with(:oauth, :github, :client_id).and_return("test-github-client-id")
+        create(:authentication, :verified, user: user, provider: "email")
+      end
+
+      def connect_buttons
+        Capybara.string(response.body).all("form[data-turbo='false'] button.btn-secondary").map(&:text).map(&:strip)
+      end
+
+      it "offers a Connect button, posting to the provider, for each enabled provider not yet linked" do
+        get settings_connected_accounts_path
+
+        expect(connect_buttons).to contain_exactly(
+          I18n.t("settings.connected_accounts.index.connect_action", provider: "Google"),
+          I18n.t("settings.connected_accounts.index.connect_action", provider: "GitHub")
+        )
+        expect(Capybara.string(response.body)).to have_css("form[action='/auth/google_oauth2'][method='post']")
+      end
+
+      it "leaves out a provider that is already linked, or waiting on verification" do
+        create(:authentication, :google, user: user)
+        create(:authentication, :github, user: user, verified_at: nil, email: "other@example.com")
+
+        get settings_connected_accounts_path
+
+        expect(connect_buttons).to be_empty
+        expect(response.body).not_to include(I18n.t("settings.connected_accounts.index.connect_heading"))
+      end
+    end
+
     describe "GET /account/connected_accounts (verified banner)" do
       it "shows an in-document success alert naming the address after verification" do
         auth = user.authentications.create!(
@@ -156,10 +191,9 @@ RSpec.describe "Account Connected Accounts", type: :request do
       expect(flash[:alert]).to eq(I18n.t("settings.connected_account_verifications.show.invalid_or_expired"))
     end
 
-    it "renders via the legacy path-token route without verifying (#950/#916)" do
-      get settings_legacy_verify_settings_connected_accounts_path(token: auth.generate_token_for(:email_verification))
-      expect(response).to have_http_status(:ok)
-      expect(auth.reload.verified_at).to be_nil
+    it "no longer serves the retired path-token route (#950)" do
+      get "#{settings_connected_account_verification_path}/#{auth.generate_token_for(:email_verification)}"
+      expect(response).to have_http_status(:not_found)
     end
   end
 
