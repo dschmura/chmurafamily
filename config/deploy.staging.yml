@@ -14,4 +14,4 @@ env:
     # RAILS_HOST: staging.yourdomain.com
 
 volumes:
-  - "modelrails_base_staging_storage:/rails/storage"
+  - "chmurafamily_staging_storage:/rails/storage"

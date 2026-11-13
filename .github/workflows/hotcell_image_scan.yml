@@ -45,12 +45,12 @@ jobs:
           no-cache: true
           pull: true
           platforms: linux/amd64
-          tags: modelrails_base-hotcell:scan-${{ github.sha }}
+          tags: chmurafamily-hotcell:scan-${{ github.sha }}
 
       - name: Scan for HIGH/CRITICAL CVEs with a fix available
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: modelrails_base-hotcell:scan-${{ github.sha }}
+          image-ref: chmurafamily-hotcell:scan-${{ github.sha }}
           severity: CRITICAL,HIGH
           exit-code: "1"
           ignore-unfixed: true
