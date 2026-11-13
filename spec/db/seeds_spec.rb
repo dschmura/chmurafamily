@@ -63,6 +63,25 @@ RSpec.describe "db/seeds.rb :shared bootstrap", type: :request do
     expect(owner.reload).not_to be_operator
   end
 
+  context "without TENANCY_OWNER_EMAIL" do
+    let(:env_vars) { super().merge("TENANCY_OWNER_EMAIL" => nil) }
+
+    it "refuses to seed production without the owner it names" do
+      expect { Rails.application.load_seed }.to raise_error(/TENANCY_OWNER_EMAIL is required/)
+    end
+
+    it "seeds a fresh fork's development database with a placeholder owner to claim from letter_opener" do
+      allow(Rails).to receive(:env).and_return(ActiveSupport::StringInquirer.new("development"))
+      allow(TenancyConfig).to receive(:shared_workspace_slug).and_return("chmura_family")
+      ActionMailer::Base.deliveries.clear
+
+      Rails.application.load_seed
+
+      expect(Workspace.find_by!(slug: "chmura_family").memberships.sole.user.email_address).to eq("owner@chmura-family.test")
+      expect(ActionMailer::Base.deliveries.sole.to).to eq([ "owner@chmura-family.test" ])
+    end
+  end
+
   context "outside production" do
     before do
       allow(Rails).to receive(:env).and_return(ActiveSupport::StringInquirer.new("development"))
