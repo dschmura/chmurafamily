@@ -56,7 +56,7 @@ class DeployCheck
 
   def proxy_refusal
     return unless forces_ssl?
-    return if @kamal.proxy_roles.none? { |role| !role.ssl? && role.hosts.one? }
+    return if @kamal.proxy_roles.none? { |role| !role.ssl? && role.hosts.one? && proxy_faces_the_internet?(role.hosts.first) }
 
     <<~MSG
       Deploy check failed: config/deploy.yml has no proxy with ssl: true, but production forces HTTPS.
@@ -66,9 +66,15 @@ class DeployCheck
       /up passes over plain HTTP, and the first redirect leads to a page that never loads.
 
       Fix: uncomment proxy: in config/deploy.yml, with ssl: true and host: your domain.
-      Several servers behind your own load balancer are left to it, and aren't refused.
+      Several servers behind your own load balancer aren't refused, and neither is a server in front that
+      handles HTTPS once proxy.run moves kamal-proxy off port 80.
       Details: /docs/developer/deployment (SSL configuration section).
     MSG
+  end
+
+  def proxy_faces_the_internet?(host)
+    run = @kamal.proxy_run(host)
+    run.nil? || (run.publish? && run.http_port.to_i == Kamal::Configuration::Proxy::Run::DEFAULT_HTTP_PORT)
   end
 
   def forces_ssl?
