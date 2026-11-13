@@ -85,6 +85,9 @@ env:
     # WORKSPACE_ON_SIGNUP: shared   # default: the preset bin/fork recorded in .fork.yml
     # TENANCY_SHARED_WORKSPACE_SLUG: your_app   # default on shared: the name in .fork.yml
 
+    # TENANCY_OWNER_EMAIL: you@yourdomain.com   # required on shared: the first deploy seeds this owner
+    # TENANCY_WORKSPACE_CREATION: disabled      # usual on shared: no workspaces beyond the one
+
     # Outbound mail: the server here, its login in credentials (smtp.user_name, smtp.password).
     # Production refuses to boot without both. Recipes: /docs/developer/deployment.
     SMTP_ADDRESS: smtp.postmarkapp.com

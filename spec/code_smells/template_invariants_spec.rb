@@ -941,6 +941,13 @@ RSpec.describe "Template invariants" do
         "— the comment is the documentation. (Donal McBreen)"
     end
 
+    it "deploy.yml offers, commented, each variable deploy:check asks a shared-preset fork for" do
+      %w[TENANCY_OWNER_EMAIL TENANCY_WORKSPACE_CREATION].each do |name|
+        expect(deploy_yml_raw).to match(/^\s*#\s*#{name}:/),
+          "deploy:check names #{name} on the shared preset, so env.clear should offer it to uncomment"
+      end
+    end
+
     it "deploy.yml warns that the job: block requires migrating off SQLite" do
       # The currently-commented `servers.job:` block is a SQLite trap: SQLite is
       # single-host, so a separate job role can't share the DB file across
