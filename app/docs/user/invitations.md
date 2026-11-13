@@ -20,7 +20,7 @@ There are three invitation types:
 
 ### If you already have an account
 
-Click **Accept** in the email, sign in if prompted, and the invitation is accepted immediately. Your account's verified email must match the address the invitation was sent to.
+Open the link in the email. If you're already signed in, click **Accept invitation** on the page it opens. If you're not, click **Sign in to accept**; the invitation is accepted as soon as you sign in. Either way you land in the workspace or project you were invited to. Your account's verified email must match the address the invitation was sent to.
 
 ### If you are new to the app
 
@@ -52,7 +52,7 @@ Blocks are per-address, so a block you made against a different address than the
 
 A client invitation grants read-only access to specific resources within a single project via the client area. The invitation email's subject names the app, not the project or the workspace; the project is named on the page the link opens.
 
-**Existing users** accepting a client invitation: one click and you land directly in the client area.
+**Existing users** accepting a client invitation: open the link, then click **Accept invitation** (or **Sign in to accept** if you're signed out), and you land directly in the client area.
 
 **New users**: complete magic-link registration with the invited email address; the client access is granted when the account is created.
 
