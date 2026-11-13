@@ -312,8 +312,9 @@ branch instead would collide with them at the merge-back.
 a release branch. Only one release is open at a time (see below), so the
 second one starts after the first has shipped.
 
-**In a fork, the template's releases count as shipped.** A fork's changelog
-carries the template's release sections, but only the template tagged them.
+**In a fork, the template's releases count as shipped.** A fork made before
+`bin/fork` started its changelog clean carries the template's release
+sections, but only the template tagged them.
 So `bin/release` also reads the tags of the template that `.fork.yml` names.
 A section counts as shipped when the template tagged it on a commit already
 in `next`. A release the fork names itself never takes a name the template

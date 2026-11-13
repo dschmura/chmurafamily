@@ -62,4 +62,20 @@ RSpec.describe "db/seeds.rb :shared bootstrap", type: :request do
 
     expect(owner.reload).not_to be_operator
   end
+
+  context "outside production" do
+    before do
+      allow(Rails).to receive(:env).and_return(ActiveSupport::StringInquirer.new("development"))
+      ActionMailer::Base.deliveries.clear
+    end
+
+    it "emails the bootstrap owner a set-password sign-in link" do
+      Rails.application.load_seed
+
+      mail = ActionMailer::Base.deliveries.sole
+      expect(mail.to).to eq([ "owner@acme.test" ])
+      token = mail.body.encoded[%r{/magic_link_callback/([\w-]+)}, 1]
+      expect(MagicLinkToken.find_by!(token_digest: MagicLinkToken.digest(token)).intent).to eq("set_password")
+    end
+  end
 end

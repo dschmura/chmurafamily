@@ -17,8 +17,8 @@ This app is **passwordless-first**: you sign in by entering your email address, 
 ### Magic link (email)
 
 1. Go to the sign-in page and enter your email address.
-2. Check your inbox for a sign-in email (subject: "Sign in to …"). It arrives within a few seconds.
-3. Click the link in the email — you'll land on a quick "Sign in as `you@example.com`?" confirmation page. Press the button to finish signing in.
+2. Check your inbox for a sign-in email (subject: "Your sign-in link"). It arrives within a few seconds.
+3. Click the link in the email — you'll land on a quick "Confirm sign-in" page ("You're about to sign in as `you@example.com`"). Press **Sign in** to finish.
 
 The confirmation step means a link that's merely *opened* (by a mail scanner or preview) can't sign anyone in — only the button press does. The link is single-use and expires after a short window. If it expires, return to the sign-in page and request a fresh one.
 
@@ -26,7 +26,7 @@ For more on the emails this process sends, see [Email Flows](/docs/user/emails).
 
 ### Passkeys (fingerprint / Face ID / device PIN)
 
-Passkeys let you sign in with your device's biometric or PIN instead of waiting for an email. After your first magic-link sign-in, a banner invites you to add a passkey — it only appears once. You can also add or manage passkeys any time at **Settings → Passkeys**.
+Passkeys let you sign in with your device's biometric or PIN instead of waiting for an email. Once you're signed in, a banner invites you to add a passkey until you add one or dismiss it. You can also add or manage passkeys any time at **Settings → Passkeys**.
 
 Once a passkey is registered, clicking "Sign in with a passkey" on the sign-in page lets your browser or device authenticate you instantly — no email required.
 
@@ -34,9 +34,9 @@ For setup details (Relying Party configuration, browser support, troubleshooting
 
 ### OAuth (Google or GitHub)
 
-If Google or GitHub sign-in is enabled, you can use the provider button on the sign-in page instead of email. On your first visit the provider creates an account for you. On subsequent visits it signs you back in.
+If Google or GitHub sign-in is enabled, you can use the provider button on the sign-in page instead of email. On your first visit the provider creates an account for you, if sign-up is open to you (the app allows open sign-up, or you arrived through an invitation or a join link); otherwise you're told sign-ups are by invitation. On subsequent visits it signs you back in.
 
-If you already have an account (by email) and want to link Google or GitHub to it: sign in first, then click the provider button — if the provider email matches your account, the provider is linked automatically. Manage all linked sign-in methods at **Settings → Connected Accounts**.
+If you already have an account (by email) and want to link Google or GitHub to it: sign in, open **Settings → Security**, and click **Connect Google** (or **Connect GitHub**). If the provider's email matches your account, it's linked straight away; if it differs, we email that address a confirmation link first. The same page lists every linked sign-in method.
 
 ### First sign-in (new accounts)
 
@@ -46,7 +46,7 @@ After registration, a non-blocking banner suggests adding a passkey. You can dis
 
 ## Account recovery
 
-There is no separate "forgot password" reset flow. If you can't sign in, request a **magic link** from the sign-in page — the same flow used for normal sign-in. Click the link to get back in, then visit **Settings → Password** if you want to update your password.
+If you can't sign in, request a **magic link** from the sign-in page — the same flow used for normal sign-in. Click the link to get back in. Password sign-in is off unless the app turns it on; where it is on, **Forgot your password?** on the password step emails a link that signs you in and opens the page to change your password.
 
 ## Signing out
 
@@ -56,7 +56,7 @@ Use the user menu (top right) to sign out. Sessions are not shared across browse
 
 Signing in creates a session that stays valid until you sign out, or until it expires — after a stretch of inactivity, or once it reaches a maximum age, whichever comes first. When a session expires you're simply asked to sign in again.
 
-**Settings → Sessions** lists every device where you're currently signed in — browser, operating system, rough location, and when it was last active — and marks the one you're using now. From there you can sign out a single device or **sign out all other devices** at once, which is the fastest way to lock out a lost or shared machine. Changing or removing your password also signs out every other device automatically.
+**Settings → Active devices** lists every device where you're currently signed in — browser, operating system, IP address, and when it was last active — and marks the one you're using now. From there you can sign out a single device or **sign out all other devices** at once, which is the fastest way to lock out a lost or shared machine. Changing or removing your password also signs out every other device automatically.
 
 An operator can also suspend your account — sign-in is then refused with a message, your current sessions end, and your workspaces and roles stay exactly as they are — and reinstate it just as easily. If that happens to you, contact whoever runs this app to have it reinstated.
 

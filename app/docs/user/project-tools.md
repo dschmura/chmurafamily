@@ -7,7 +7,7 @@ keywords: project tools registry toggle enabled_tools onboarding tabs EnforcesPr
 # Project tools
 
 Each project has a set of enabled **tools**. The base template ships one tool —
-**Docs** (the `Resource`/`Document` surface). Add your own through the registry.
+**Docs & Files** (the `Resource`/`Document` surface). Add your own through the registry.
 
 ## Register a tool
 

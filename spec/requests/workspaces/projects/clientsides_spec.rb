@@ -14,6 +14,23 @@ RSpec.describe "Project Clientside settings", type: :request do
     expect(response).to have_http_status(:ok)
   end
 
+  it "links to inviting a client when the creator can manage members" do
+    get edit_workspace_project_clientside_path(workspace, project)
+    expect(response.body).to include(new_workspace_project_client_invitation_path(workspace, project))
+  end
+
+  context "as a creator whose workspace role cannot manage members" do
+    let(:workspace) { create(:user).workspaces.sole }
+
+    it "offers no invite link and names who can invite" do
+      get edit_workspace_project_clientside_path(workspace, project)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include(new_workspace_project_client_invitation_path(workspace, project))
+      expect(response.body).to include(I18n.t("clientside.invitations.new.ask_a_manager"))
+    end
+  end
+
   it "enables Clientside" do
     patch workspace_project_clientside_path(workspace, project),
       params: { project: { clientside_enabled: "1" } }
