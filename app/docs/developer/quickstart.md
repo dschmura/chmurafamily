@@ -41,6 +41,8 @@ the dependencies and prepares the database. Then `bin/dev` starts the server.
 **Check:** <http://localhost:3000> shows the public home page, and
 `bin/parallel-rspec` ends with 0 failures. If you left the support address
 blank, one spec fails until you set it in `config/locales/en/pages.en.yml`.
+On the shared preset, the seed made an owner, `owner@<your_app>.test`: its
+sign-in link is waiting at <http://localhost:3000/letter_opener>.
 Details: [Getting Started](getting-started).
 
 ## 3. Work by pull request
@@ -95,8 +97,9 @@ a password login is refused. Details:
 
 In `config/deploy.yml`, set the server's address (exactly one), uncomment
 `proxy:` with your domain, match `builder.arch` to the server, and set
-`RAILS_HOST` and `BACKUP_PATH`, plus `TENANCY_OWNER_EMAIL` on the shared
-preset. `bin/rails deploy:check` then says "Nothing here
+`RAILS_HOST` and `BACKUP_PATH`. On the shared preset, also uncomment
+`TENANCY_OWNER_EMAIL` (you) and `TENANCY_WORKSPACE_CREATION: disabled`.
+`bin/rails deploy:check` then says "Nothing here
 stops a deploy." Kamal runs the same check before every build, and stops a
 deploy that would fail. Point your domain at the server, then:
 
