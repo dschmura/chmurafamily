@@ -98,6 +98,14 @@ RSpec.describe "bin/setup" do
     expect(logged).to include("bundle exec lefthook install", "rails db:prepare")
   end
 
+  it "clears temp files before preparing the database, so the seed's mail survives" do
+    clone_with(nil)
+
+    run_setup
+
+    expect(logged.index("rails log:clear tmp:clear")).to be < logged.index("rails db:prepare")
+  end
+
   # assets:clobber also deletes the Tailwind build, and --skip-server never reaches bin/dev to rebuild it.
   it "rebuilds the stylesheet after clearing precompiled assets, so system specs render styled" do
     clone_with(nil)
