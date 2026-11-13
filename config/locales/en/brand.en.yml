@@ -3,7 +3,7 @@
 # in a fork without merge conflicts. See /docs/developer/forking.
 en:
   application:
-    name: "Chmurafamily"
-    description: "A multi-tenant SaaS starter kit built on Rails."
+    name: "Chmura Family"
+    description: "A private place for the Chmura family's photos, videos and memories."
   footer:
-    copyright: "Chmurafamily. All rights reserved."
+    copyright: "Humble Daisy, Inc. All rights reserved."
