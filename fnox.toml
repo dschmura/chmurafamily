@@ -1,0 +1,10 @@
+[providers.age-production]
+type = "age"
+recipients = ["age1tm82hxklpd4qa5sv2kfpgdcf6ls47nm3lr99r75w8tq0nhyct32s5ds3r2"]
+
+[providers.age-staging]
+type = "age"
+recipients = ["age1tm82hxklpd4qa5sv2kfpgdcf6ls47nm3lr99r75w8tq0nhyct32s5ds3r2"]
+
+[secrets]
+RAILS_MASTER_KEY= { provider = "age-production", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSB3cXRpdTdPWlBJVC85cVlUc0xCbnZSdnlpRXlpMzhIQkJwT3pvcXhuQTNZCnJ3MHBoT0VmazZvWWYvZVR1QXR6bFdXMWwwUTJTMTh0S2xDWE9xdlVVa0EKLT4gWG5sS0kpNjktZ3JlYXNlIGZrSiYkSFkoIFdZdm0na3QgKmUKdHdvbUJENDZ0QXhtOHhidzZmcTJrQ21yQktGNkIwZWIyKy8wNjFiaklJUnVxS3dodFluQU5HZ2NXd1lyOFE1YQoxeVJSa25ESHI5cGlOZzBFQUxCRGhDOVBnUERIMXJiY25lMAotLS0gYm9oYndDeG4zNUhrK2thYmJXd3NnVDBNZmtBS1o5ZUI5SGVFL1VvRTczQQo0mxvNRO57ckC+1KYG+XND2ihFKiNoP1d0n0oousIIitJAaicn3CIMyauDAP/XgV6Mh1xNfpv0kjda8AS2jZpw" }
