@@ -4,6 +4,6 @@
 en:
   application:
     name: "Chmura Family"
-    description: "A multi-tenant SaaS starter kit built on Rails."
+    description: "A private space to share memories and stories about The Chmura Family."
   footer:
-    copyright: "Chmura Family. All rights reserved."
+    copyright: "Humble Daisy, Inc. All rights reserved."
