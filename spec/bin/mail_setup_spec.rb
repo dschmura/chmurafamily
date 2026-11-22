@@ -102,7 +102,7 @@ RSpec.describe MailSetup do
       expect(clear_values(after)).to include("MAIL_FROM" => "hi@acme.example", "SMTP_ADDRESS" => "smtp.example.org")
     end
 
-    it "keeps the MAIL_FROM comment when no sender is given" do
+    it "keeps the MAIL_FROM comment when no sender is given", :template_only do
       expect(described_class.with_values(real, values.except("MAIL_FROM"))).to include(mail_from_comment.first)
     end
 
@@ -956,13 +956,13 @@ RSpec.describe MailSetup do
         deploy.write(deploy.read.sub("# MAIL_FROM: hello@app.yourdomain.com", "MAIL_FROM: old@acme.example"))
       end
 
-      it "warns that the sender's domain must be verified at the new provider" do
+      it "warns that the sender's domain must be verified at the new provider", :template_only do
         flow("2", "us-east-1", "user", "pass", "").run
 
         expect(output.string).to include("old@acme.example", "verified at the new provider")
       end
 
-      it "warns about a sender from mailer.from too" do
+      it "warns about a sender from mailer.from too", :template_only do
         deploy.write(deploy.read.sub("MAIL_FROM: old@acme.example", "# MAIL_FROM: x"))
         allow(credentials).to receive(:mailer_from).and_return("cred@acme.example")
         flow("2", "us-east-1", "user", "pass", "").run

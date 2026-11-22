@@ -2,8 +2,8 @@ en:
   pages:
     home:
       hero:
-        title: "Build your SaaS faster"
-        subtitle: "A production-ready Rails starter kit with passwordless sign-in, workspaces, projects, and real-time collaboration built in."
+        title: "The Chmura Family"
+        subtitle: "A private space to share memories and stories about The Chmura Family"
         cta_primary: "Get started"
         cta_signed_in: "Go to your workspaces"
         cta_secondary: "View documentation"

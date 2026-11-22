@@ -1,0 +1,2 @@
+exclusions:
+  KAMAL_HOST: "The deploy host config/deploy.yml connects to; read from fnox.toml, where it is stored encrypted, so it is never a production input"
