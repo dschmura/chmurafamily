@@ -12,9 +12,10 @@ namespace :tenancy do
     abort "Usage: rails tenancy:owner_setup_link[owner@example.com] (or set TENANCY_OWNER_EMAIL)" if email.blank?
 
     owner = User.find_by!(email_address: email)
-    host = ENV.fetch("APP_HOST", "localhost")
+    url_options = ActionMailer::Base.default_url_options.dup
+    url_options[:host] = ENV["APP_HOST"] if ENV["APP_HOST"].present?
     token = MagicLinkToken.create_for_email(owner.email_address, intent: "set_password")
-    url = Rails.application.routes.url_helpers.magic_link_callback_url(token: token, host: host)
+    url = Rails.application.routes.url_helpers.magic_link_callback_url(token: token, **url_options)
     puts "[tenancy] Sign-in link for #{email} (valid 15 minutes): #{url}"
   rescue ActiveRecord::RecordNotFound
     abort "User not found: #{email}"

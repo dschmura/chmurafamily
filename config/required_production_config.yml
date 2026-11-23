@@ -98,7 +98,7 @@ inputs:
     required: optional
     secret: false
     purpose: "The host in links printed by tenancy:owner_setup_link and in the seed log"
-    where: "Usually the same value as RAILS_HOST; defaults to localhost, so set it or the printed link points at localhost"
+    where: "Only to print links on a different host; unset, they use the mailer's host (RAILS_HOST in production)"
     set_with: "config/deploy.yml → env.clear"
     regenerable: "Yes, any time; redeploy"
     step: 6

@@ -362,6 +362,8 @@ RSpec.describe DeployCheck do
     expect(check.warnings.join).to include("192.168.0.1", "Backups are off")
   end
 
+  # Pins the template's untouched files on purpose: a fork has edited them, so it skips this.
+  # Don't point it at a fixture copy; the copy would drift, and catching that drift is the point.
   it "reads the template's own deploy files, as a fork first meets them", :template_only do
     %w[config/deploy.yml config/environments/production.rb .kamal/secrets .tool-versions].each { |path| write(path, template.join(path).read) }
 

@@ -58,8 +58,9 @@ if TenancyConfig.shared?
   # which mints a fresh short-lived link on demand, when the operator is ready.
   # In dev/test the mailer runs normally.
   if Rails.env.production?
-    host = ENV.fetch("APP_HOST", "localhost")
-    workspace_url = Rails.application.routes.url_helpers.workspace_url(workspace, host: host)
+    url_options = ActionMailer::Base.default_url_options.dup
+    url_options[:host] = ENV["APP_HOST"] if ENV["APP_HOST"].present?
+    workspace_url = Rails.application.routes.url_helpers.workspace_url(workspace, **url_options)
     Rails.logger.info "[tenancy] Owner account seeded for #{owner_email}. " \
       "Workspace: #{workspace_url}. " \
       "Run `bin/rails tenancy:owner_setup_link` for a short-lived sign-in link " \

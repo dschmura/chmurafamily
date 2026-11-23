@@ -93,7 +93,7 @@ group :development, :test do
   gem "i18n-tasks", "~> 1.0", require: false
 
   # bin/release: the next → release/<name> → main flow [https://github.com/dschmura/release_flow]
-  gem "release_flow", "~> 0.2.0", require: false
+  gem "release_flow", "~> 0.2.1", require: false
 
   # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
   gem "rubocop-rails-omakase", require: false
