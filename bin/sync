@@ -41,7 +41,7 @@ class Sync
     latest, commit = releases.last
     git("fetch", "-q", "--no-tags", "upstream", "refs/tags/v#{latest}")
     added = releases.reject { |_, c| ancestor?(c, "origin/next") }
-    return say("next already has the template's release v#{latest}.") if added.empty?
+    return say(up_to_date(latest, commit)) if added.empty?
 
     branch = "#{BRANCH_PREFIX}#{latest}"
     unless git("ls-remote", "--heads", "origin", branch).empty?
@@ -101,6 +101,18 @@ class Sync
         .to_h { |sha, ref| [ ref[%r{\Arefs/tags/v(#{ReleaseFlow::Changelog::NAME})(?:\^\{\})?\z}, 1], sha ] }
         .except(nil)
         .sort_by { |name, _| name.split("-").then { |date, n| [ date, n.to_i ] } }
+  end
+
+  # bin/sync brings releases only; this says whether the template's next holds work that isn't released yet.
+  def up_to_date(latest, commit)
+    current = "next already has v#{latest}, the template's latest release."
+    return current unless git_ok?("fetch", "-q", "--no-tags", "upstream", "next")
+
+    count = git("rev-list", "--count", "--no-merges", "#{commit}..FETCH_HEAD").to_i
+    return current if count.zero?
+
+    waiting = (count == 1) ? "1 change since then that isn't released yet; it arrives" : "#{count} changes since then that aren't released yet; they arrive"
+    "#{current}\nThe template has #{waiting} with its next release."
   end
 
   def merging? = git_ok?("rev-parse", "-q", "--verify", "MERGE_HEAD")

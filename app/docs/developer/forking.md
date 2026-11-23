@@ -543,7 +543,10 @@ bin/sync
    merge commit, once its checks pass. Merging it starts your next release
    like any other PR.
 
-If `next` already has the template's latest release, it says so and stops.
+`bin/sync` brings in releases only, not the template's work in progress: a fix
+merged into the template reaches your fork once the template ships it in a
+release. If `next` already has the template's latest release, it says so,
+counts any template changes not released yet, and stops.
 It needs a clean working tree, an `upstream` remote (`bin/setup` adds it) and
 the GitHub CLI, signed in. Like `bin/setup`, it points `gh` at your fork, not
 the template, so a clone set up before setup did that is fixed on its next sync.

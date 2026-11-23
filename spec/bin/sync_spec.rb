@@ -155,9 +155,27 @@ RSpec.describe Sync do
 
     run_sync
 
-    expect(@output).to include("next already has the template's release v2026.10.30")
+    expect(@output).to include("next already has v2026.10.30, the template's latest release.")
+    expect(@output).not_to include("released yet")
     expect(git("ls-remote", "--heads", "origin")).not_to include("sync/")
     expect(calls).to be_empty
+  end
+
+  it "counts the template's unreleased changes when next already has its latest release" do
+    setup_repos
+    template_release("2026.10.30")
+    git("fetch", "-q", "upstream")
+    git("merge", "-q", "--no-edit", "-X", "ours", "upstream/main")
+    git("push", "-q", "origin", "next")
+    template.join("app.rb").write("unreleased\n")
+    git("commit", "-q", "-am", "unreleased work", dir: template)
+    git("push", "-q", "origin", "HEAD:next", dir: template)
+
+    run_sync
+
+    expect(@output).to include("next already has v2026.10.30, the template's latest release.\n" \
+                               "The template has 1 change since then that isn't released yet; it arrives with its next release.")
+    expect(git("ls-remote", "--heads", "origin")).not_to include("sync/")
   end
 
   context "when the merge conflicts" do
