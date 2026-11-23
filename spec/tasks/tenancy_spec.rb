@@ -34,6 +34,17 @@ RSpec.describe "Tenancy rake tasks" do
       expect(output).to include("15 minutes")
     end
 
+    it "prints a link on the mailer's host when APP_HOST is unset" do
+      owner = create(:user, email_address: "owner@acme.test")
+      ENV.delete("APP_HOST")
+      allow(ActionMailer::Base).to receive(:default_url_options).and_return(host: "mail.example.com")
+
+      output = run_task(owner.email_address)
+
+      expect(output).to include("://mail.example.com/magic_link_callback/")
+      expect(output).not_to include("localhost")
+    end
+
     it "mints a usable token — the printed link resolves back to the owner" do
       owner
 

@@ -40,6 +40,17 @@ RSpec.describe "db/seeds.rb :shared bootstrap", type: :request do
     expect(tenancy_line).not_to include("/passwords/")            # no live password credential in logs
   end
 
+  it "logs the workspace URL on the mailer's host when APP_HOST is unset" do
+    ENV.delete("APP_HOST")
+    allow(ActionMailer::Base).to receive(:default_url_options).and_return(host: "mail.example.com")
+    logged = []
+    allow(Rails.logger).to receive(:info) { |msg| logged << msg }
+
+    Rails.application.load_seed
+
+    expect(logged.find { |m| m.to_s.include?("[tenancy]") }).to include("://mail.example.com/workspaces/acme")
+  end
+
   it "grants the bootstrap owner an operatorship, idempotently" do
     allow(Rails.logger).to receive(:info)
 

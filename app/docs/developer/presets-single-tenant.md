@@ -81,7 +81,7 @@ The workspace switcher stays, naming the shared workspace: with one membership i
    | `TENANCY_OWNER_FIRST_NAME` | no | `Admin` | Display first name (default `Workspace`) |
    | `TENANCY_OWNER_LAST_NAME` | no | `User` | Display last name (default `Owner`) |
    | `SIGNUP_MODE` | yes | `invite_only` | Lock account creation to invitations |
-   | `APP_HOST` | no | `app.acme.com` | Host used in the logged workspace URL and in `tenancy:owner_setup_link`'s sign-in link (default `localhost` — set this on staging/prod) |
+   | `APP_HOST` | no | `app.acme.com` | Host used in the logged workspace URL and in `tenancy:owner_setup_link`'s sign-in link (default: the mailer's host, `RAILS_HOST` in production) |
 
 2. Run `bin/setup` (or `bin/rails db:seed` on an existing app). The seed is idempotent — safe to re-run.
 

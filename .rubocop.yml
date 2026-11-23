@@ -22,6 +22,11 @@ inherit_mode:
   merge:
     - Exclude
 
+# docs/ is a gitignored local scratch folder; nothing in it may block a push.
+AllCops:
+  Exclude:
+    - "docs/**/*"
+
 # Overwrite or add rules to create your own house style
 #
 # # Use `[a, [b, c]]` not `[ a, [ b, c ] ]`

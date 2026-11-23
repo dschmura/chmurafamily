@@ -145,13 +145,13 @@ RSpec.describe "the deployment guide" do
     expect(sections - headings).to be_empty
   end
 
-  it "gives a deploy-host check that matches what kamal config prints", :template_only do
+  it "gives a deploy-host check that matches what kamal config prints" do
     target = guide[/bin\/kamal config \| grep -A1 (\S+)/, 1]
     config = Dir.chdir(Rails.root) { Kamal::Configuration.create_from(config_file: Pathname("config/deploy.yml")) }
     printed = Kamal::Utils.redacted(config.to_h).to_yaml
 
     expect(target).to be_present
-    expect(printed.lines.each_cons(2).find { |line, _| line.include?(target) }&.last).to include("192.168.0.1")
+    expect(printed.lines.each_cons(2).find { |line, _| line.include?(target) }&.last).to match(/\A\s*- \S+/)
   end
 
   it "links only to headings it has" do

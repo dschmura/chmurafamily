@@ -102,8 +102,15 @@ RSpec.describe MailSetup do
       expect(clear_values(after)).to include("MAIL_FROM" => "hi@acme.example", "SMTP_ADDRESS" => "smtp.example.org")
     end
 
-    it "keeps the MAIL_FROM comment when no sender is given", :template_only do
-      expect(described_class.with_values(real, values.except("MAIL_FROM"))).to include(mail_from_comment.first)
+    it "keeps the MAIL_FROM comment when no sender is given" do
+      comment = "    # MAIL_FROM: hello@app.yourdomain.com   # default: noreply@RAILS_HOST\n"
+      commented = "env:\n  clear:\n    SMTP_ADDRESS: old.example\n#{comment}"
+
+      expect(described_class.with_values(commented, values.except("MAIL_FROM"))).to include(comment)
+    end
+
+    it "finds the MAIL_FROM comment it fills in, in the template's own deploy.yml", :template_only do
+      expect(mail_from_comment).to contain_exactly(/^\s+# MAIL_FROM: /)
     end
 
     it "inserts the port and sender directly after the address when they're absent" do
@@ -953,16 +960,16 @@ RSpec.describe MailSetup do
     describe "swap warnings" do
       before do
         allow(credentials).to receive(:login?).and_return(true)
-        deploy.write(deploy.read.sub("# MAIL_FROM: hello@app.yourdomain.com", "MAIL_FROM: old@acme.example"))
+        deploy.write("env:\n  clear:\n    SMTP_ADDRESS: smtp.postmarkapp.com\n    SMTP_PORT: 587\n    MAIL_FROM: old@acme.example\n")
       end
 
-      it "warns that the sender's domain must be verified at the new provider", :template_only do
+      it "warns that the sender's domain must be verified at the new provider" do
         flow("2", "us-east-1", "user", "pass", "").run
 
         expect(output.string).to include("old@acme.example", "verified at the new provider")
       end
 
-      it "warns about a sender from mailer.from too", :template_only do
+      it "warns about a sender from mailer.from too" do
         deploy.write(deploy.read.sub("MAIL_FROM: old@acme.example", "# MAIL_FROM: x"))
         allow(credentials).to receive(:mailer_from).and_return("cred@acme.example")
         flow("2", "us-east-1", "user", "pass", "").run
